@@ -1,0 +1,50 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# Scheduled Functions
+[functions."booking-reminders"]
+  schedule = "*/5 * * * *"
+
+# Route /api/reminders/trigger for manual inspection & testing
+[[redirects]]
+  from = "/api/reminders/trigger"
+  to = "/.netlify/functions/booking-reminders"
+  status = 200
+
+# Route /api/webhook directly to the serverless webhook function
+[[redirects]]
+  from = "/api/webhook"
+  to = "/.netlify/functions/webhook"
+  status = 200
+
+# Route /api/whatsapp/send to the serverless send function
+[[redirects]]
+  from = "/api/whatsapp/send"
+  to = "/.netlify/functions/send-whatsapp"
+  status = 200
+
+# Route /api/chats to the chats function
+[[redirects]]
+  from = "/api/chats"
+  to = "/.netlify/functions/chats"
+  status = 200
+
+# Route /api/media to the media proxy function
+[[redirects]]
+  from = "/api/media"
+  to = "/.netlify/functions/media"
+  status = 200
+
+# Route /api/bot-settings to the bot settings function
+[[redirects]]
+  from = "/api/bot-settings"
+  to = "/.netlify/functions/bot-settings"
+  status = 200
+
+# SPA fallback routing for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
