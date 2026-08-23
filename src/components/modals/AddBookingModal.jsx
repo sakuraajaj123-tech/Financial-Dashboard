@@ -79,6 +79,60 @@ function hasOverlap(checkIn, checkOut, bookings, excludeBookingId = null) {
     });
 }
 
+// ─── Automated Pricing Matrix ──────────────────────────────────────────────────
+
+export function calculateSuggestedPricing(unitNumber, source, checkInDate) {
+  const uNum = Number(unitNumber);
+  if (!uNum) return { price: null, insurance: null };
+
+  const isWeekend = (() => {
+    if (!checkInDate) return false;
+    try {
+      const day = parseISO(checkInDate).getDay();
+      return day === 5 || day === 6; // Friday (5) or Saturday (6)
+    } catch {
+      return false;
+    }
+  })();
+
+  const isGathern = source === BOOKING_SOURCES.GATHERN;
+
+  let price = null;
+  let insurance = null;
+
+  if (uNum >= 1 && uNum <= 5) {
+    insurance = 300;
+    if (isGathern) {
+      price = isWeekend ? 279 : 244;
+    } else {
+      price = isWeekend ? 330 : 270;
+    }
+  } else if (uNum === 6) {
+    insurance = 200;
+    if (isGathern) {
+      price = isWeekend ? 135 : 126;
+    } else {
+      price = 140; // Direct: 140 (All days)
+    }
+  } else if (uNum === 7) {
+    insurance = 200;
+    if (isGathern) {
+      price = isWeekend ? 118 : 109;
+    } else {
+      price = isWeekend ? 150 : 130;
+    }
+  } else if (uNum === 8) {
+    insurance = 150;
+    if (isGathern) {
+      price = isWeekend ? 102 : 84;
+    } else {
+      price = isWeekend ? 120 : 100;
+    }
+  }
+
+  return { price, insurance };
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export function AddBookingModal({
@@ -120,6 +174,50 @@ export function AddBookingModal({
   const [submitting, setSubmitting] = useState(false);
   const overlayRef = useRef(null);
   const firstInputRef = useRef(null);
+
+  // Track previous dependencies to support non-destructive edit mode
+  const prevPricingDepsRef = useRef({
+    unitId: form.unitId,
+    source: form.source,
+    checkIn: form.checkIn,
+    isInitial: true,
+  });
+
+  // Auto-fill price & insurance based on Unit, Source, and Check-In Date
+  useEffect(() => {
+    // In edit mode, do not overwrite saved booking values on initial mount
+    if (isEdit && prevPricingDepsRef.current.isInitial) {
+      prevPricingDepsRef.current.isInitial = false;
+      return;
+    }
+
+    const hasDepsChanged =
+      prevPricingDepsRef.current.unitId !== form.unitId ||
+      prevPricingDepsRef.current.source !== form.source ||
+      prevPricingDepsRef.current.checkIn !== form.checkIn;
+
+    // In edit mode, only auto-fill if the user actively changes unit, source, or checkIn
+    if (isEdit && !hasDepsChanged) return;
+
+    prevPricingDepsRef.current = {
+      unitId: form.unitId,
+      source: form.source,
+      checkIn: form.checkIn,
+      isInitial: false,
+    };
+
+    const targetUnit = units.find((u) => u.id === form.unitId) || preselectedUnit;
+    const unitNum = targetUnit?.number || (form.unitId ? String(form.unitId).replace(/[^0-9]/g, '') : null);
+
+    if (unitNum) {
+      const { price, insurance } = calculateSuggestedPricing(unitNum, form.source, form.checkIn);
+      setForm((prev) => ({
+        ...prev,
+        ...(price !== null ? { amount: String(price) } : {}),
+        ...(insurance !== null ? { insurance: String(insurance) } : {}),
+      }));
+    }
+  }, [form.unitId, form.source, form.checkIn, units, preselectedUnit, isEdit]);
 
   // Derive the bookings of the currently selected unit for the calendar
   const selectedUnit = units.find((u) => u.id === form.unitId) || preselectedUnit || null;
