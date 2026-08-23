@@ -189,10 +189,20 @@ export function AdminPhonesSettings() {
     setTriggeringCron(true);
     setCronResult(null);
     try {
-      const res = await fetch('/api/reminders/trigger', {
+      let res = await fetch('/api/reminders/trigger', {
         method: 'POST',
       });
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch('/.netlify/functions/booking-reminders', {
+          method: 'POST',
+        });
+      }
+
       const data = await res.json().catch(() => ({}));
+      if (!res.ok && !data.error) {
+        data.error = `HTTP ${res.status}: ${res.statusText || 'Failed to trigger cron'}`;
+      }
       setCronResult(data);
     } catch (err) {
       console.error('[AdminSettings] Manual cron trigger error:', err);

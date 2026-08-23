@@ -2,9 +2,15 @@
 // Netlify Scheduled Function running every 5 minutes to process pending WhatsApp reminders
 // Strictly follows the Zero-Cost Indexed Queue Architecture (~576 reads/day = 1.15% of Firebase Free Tier)
 
-import { schedule } from '@netlify/functions';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Content-Type': 'application/json',
+};
 
 function getDb() {
   const rawCreds = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -21,7 +27,7 @@ function getDb() {
 
 async function logOutgoingReminder(db, phone, reminder, templateName, unitNumber) {
   try {
-    const cleanPhone = phone.replace('+', '').trim();
+    const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
     const chatRef = db.collection('chats').doc(cleanPhone);
     const textLabel = reminder.type === 'entry'
       ? `[تذكير دخول تلقائي: وحدة ${unitNumber}]`
@@ -50,7 +56,15 @@ async function logOutgoingReminder(db, phone, reminder, templateName, unitNumber
   }
 }
 
-async function processRemindersCore(event) {
+export async function handler(event, context) {
+  if (event && event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ ok: true }),
+    };
+  }
+
   console.log('[Reminders Cron] ⏰ Running reminder queue check at', new Date().toISOString());
 
   const db = getDb();
@@ -58,7 +72,7 @@ async function processRemindersCore(event) {
     console.error('[Reminders Cron] ❌ FIREBASE_SERVICE_ACCOUNT not configured');
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Firebase Admin credentials not configured on server' }),
     };
   }
@@ -75,7 +89,7 @@ async function processRemindersCore(event) {
     console.error('[Reminders Cron] ❌ Meta Cloud API credentials not configured');
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Meta credentials not configured on server' }),
     };
   }
@@ -94,11 +108,11 @@ async function processRemindersCore(event) {
       console.log('[Reminders Cron] 💤 No reminders due at this time.');
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: CORS_HEADERS,
         body: JSON.stringify({
           message: 'No pending reminders due',
           checkedAt: nowIso,
-          processed: 0,
+          remindersProcessed: 0,
         }),
       };
     }
@@ -113,10 +127,6 @@ async function processRemindersCore(event) {
       if (Array.isArray(data.adminPhones)) {
         adminPhones = data.adminPhones.filter(Boolean);
       }
-    }
-
-    if (adminPhones.length === 0) {
-      console.warn('[Reminders Cron] ⚠️ No admin phone numbers configured in settings/global_settings.');
     }
 
     const endpoint = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
@@ -204,7 +214,7 @@ async function processRemindersCore(event) {
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         message: 'Reminders processed successfully',
         checkedAt: nowIso,
@@ -218,11 +228,9 @@ async function processRemindersCore(event) {
     console.error('[Reminders Cron] 💥 Unhandled error processing reminders:', err);
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: err.message }),
     };
   }
 }
 
-// Scheduled wrapper runs every 5 minutes on Netlify, while also responding to HTTP invokes
-export const handler = schedule('*/5 * * * *', processRemindersCore);
