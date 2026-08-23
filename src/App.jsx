@@ -11,6 +11,7 @@ import { PortfolioAnalyticsView } from './components/analytics/PortfolioAnalytic
 import { AddBookingModal } from './components/modals/AddBookingModal';
 import { WebhookInspector } from './components/webhook/WebhookInspector';
 import { BotMenuSettings } from './components/settings/BotMenuSettings';
+import { AdminPhonesSettings } from './components/settings/AdminPhonesSettings';
 import { useUnits } from './hooks/useUnits';
 import { sendWhatsAppConfirmation } from './api/whatsapp';
 import { simulateWebhookEvent } from './api/webhook';
@@ -34,7 +35,7 @@ export default function App() {
   const [selectedUnitId, setSelectedUnitId] = useState(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingUnitPreselect, setBookingUnitPreselect] = useState(null);
-  const [selectedBookingDetails, setSelectedBookingDetails] = useState(null);
+  const [editingBooking, setEditingBooking] = useState(null);
 
   const handleDeleteBooking = useCallback((unitId, bookingId, phone) => {
     deleteBooking(unitId, bookingId);
@@ -70,22 +71,22 @@ export default function App() {
   };
 
   const handleOpenBookingModal = (unit = null) => {
-    setSelectedBookingDetails(null);
+    setEditingBooking(null);
     setBookingUnitPreselect(unit);
     setIsBookingModalOpen(true);
   };
 
-  const handleViewBooking = (booking, unit) => {
-    setSelectedBookingDetails({ ...booking, unitId: unit?.id || booking.unitId });
+  const handleViewBookingDetails = (booking, unit) => {
+    setEditingBooking(booking);
     setBookingUnitPreselect(unit || getUnit(booking.unitId));
     setIsBookingModalOpen(true);
   };
 
-  const handleSaveBooking = (unitId, bookingData, existingBookingId) => {
-    if (existingBookingId) {
-      updateBooking(unitId, existingBookingId, bookingData);
+  const handleSaveBooking = async (unitId, bookingData, bookingId) => {
+    if (bookingId || editingBooking) {
+      await updateBooking(unitId, bookingId || editingBooking.id, bookingData);
     } else {
-      addBooking(unitId, bookingData);
+      await addBooking(unitId, bookingData);
     }
   };
 
@@ -124,7 +125,9 @@ export default function App() {
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onAddBooking={() => handleOpenBookingModal()}
           title={
-            activeView === 'bot-settings'
+            activeView === 'reminders'
+              ? t('header.remindersTitle')
+              : activeView === 'bot-settings'
               ? t('header.botSettingsTitle')
               : activeView === 'webhook-inspector'
               ? t('header.webhookTitle')
@@ -135,7 +138,9 @@ export default function App() {
               : t('header.dashboardTitle')
           }
           subtitle={
-            activeView === 'bot-settings'
+            activeView === 'reminders'
+              ? t('header.remindersSubtitle')
+              : activeView === 'bot-settings'
               ? t('header.botSettingsSubtitle')
               : activeView === 'webhook-inspector'
               ? t('header.webhookSubtitle')
@@ -148,7 +153,9 @@ export default function App() {
         />
 
         <div className={`flex-1 ${activeView === 'webhook-inspector' ? 'overflow-hidden p-2 sm:p-3 lg:p-4 flex flex-col min-h-0' : 'overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-6'}`}>
-          {activeView === 'bot-settings' ? (
+          {activeView === 'reminders' ? (
+            <AdminPhonesSettings />
+          ) : activeView === 'bot-settings' ? (
             <BotMenuSettings />
           ) : activeView === 'webhook-inspector' ? (
             <WebhookInspector />
@@ -173,7 +180,7 @@ export default function App() {
               onBack={handleBackToDashboard}
               onAddBooking={handleOpenBookingModal}
               onDeleteBooking={handleDeleteBooking}
-              onViewBooking={handleViewBooking}
+              onViewBookingDetails={handleViewBookingDetails}
             />
           ) : (
             /* Units Grid Only */
@@ -214,10 +221,10 @@ export default function App() {
         <AddBookingModal
           units={units}
           preselectedUnit={bookingUnitPreselect}
-          initialBooking={selectedBookingDetails}
+          initialBooking={editingBooking}
           onClose={() => {
             setIsBookingModalOpen(false);
-            setSelectedBookingDetails(null);
+            setEditingBooking(null);
           }}
           onSubmit={handleSaveBooking}
         />
@@ -225,3 +232,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -134,3 +134,42 @@ export async function sendMediaMessage(to, base64Media, mimeType, mediaType, cap
 
   return await response.json();
 }
+
+/**
+ * Sends the "entry_reminder" template (ar) to a phone number.
+ */
+export async function sendEntryReminder(to, unitNumber = '1') {
+  const response = await fetch('/api/whatsapp/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'entry_reminder', to, unitNumber }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const metaMsg = errorData?.details?.error?.message || errorData?.error || `Server returned ${response.status}`;
+    throw new Error(metaMsg);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Sends the "reminder" template (ar) to a phone number.
+ */
+export async function sendExitReminder(to, unitNumber = '1') {
+  const response = await fetch('/api/whatsapp/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'reminder', to, unitNumber }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const metaMsg = errorData?.details?.error?.message || errorData?.error || `Server returned ${response.status}`;
+    throw new Error(metaMsg);
+  }
+
+  return await response.json();
+}
+

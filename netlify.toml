@@ -3,20 +3,20 @@
   publish = "dist"
   functions = "netlify/functions"
 
-# Scheduled Functions
+# Scheduled function: WhatsApp booking reminders (every 5 minutes)
 [functions."booking-reminders"]
   schedule = "*/5 * * * *"
-
-# Route /api/reminders/trigger for manual inspection & testing
-[[redirects]]
-  from = "/api/reminders/trigger"
-  to = "/.netlify/functions/booking-reminders"
-  status = 200
 
 # Route /api/webhook directly to the serverless webhook function
 [[redirects]]
   from = "/api/webhook"
   to = "/.netlify/functions/webhook"
+  status = 200
+
+# Route /api/reminders/trigger to the booking-reminders function for manual testing
+[[redirects]]
+  from = "/api/reminders/trigger"
+  to = "/.netlify/functions/booking-reminders"
   status = 200
 
 # Route /api/whatsapp/send to the serverless send function

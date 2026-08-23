@@ -170,7 +170,7 @@ export async function handler(event, context) {
 
       payload = {
         messaging_product: 'whatsapp',
-        to: String(to).replace(/[^0-9]/g, ''),
+        to,
         type: 'template',
         template: {
           name: 'terms',
@@ -189,8 +189,8 @@ export async function handler(event, context) {
         },
       };
     }
-    // ── Mode 5: Send "entry_reminder" or "reminder" (Exit) template ───────────
-    else if (body.mode === 'entry_reminder' || body.mode === 'reminder') {
+    // ── Mode 5: Send "entry_reminder" (Check-in Reminder) ──────────────────────
+    else if (body.mode === 'entry_reminder') {
       const { to, unitNumber } = body;
 
       if (!to) {
@@ -200,16 +200,13 @@ export async function handler(event, context) {
         };
       }
 
-      const effectiveUnit = unitNumber ? String(unitNumber) : '101';
-      const cleanTo = String(to).replace(/[^0-9]/g, '');
-
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to: cleanTo,
+        to,
         type: 'template',
         template: {
-          name: body.mode,
+          name: 'entry_reminder',
           language: { code: 'ar' },
           components: [
             {
@@ -217,7 +214,7 @@ export async function handler(event, context) {
               parameters: [
                 {
                   type: 'text',
-                  text: effectiveUnit,
+                  text: String(unitNumber || '1'),
                 },
               ],
             },
@@ -225,7 +222,40 @@ export async function handler(event, context) {
         },
       };
     }
-    // ── Mode 6: Send media (image / audio) ────────────────────────────────────
+    // ── Mode 6: Send "reminder" (Check-out Reminder) ──────────────────────────
+    else if (body.mode === 'reminder' || body.mode === 'reminder_test') {
+      const { to, unitNumber } = body;
+
+      if (!to) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Missing "to" phone number' }),
+        };
+      }
+
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'template',
+        template: {
+          name: 'reminder',
+          language: { code: 'ar' },
+          components: [
+            {
+              type: 'body',
+              parameters: [
+                {
+                  type: 'text',
+                  text: String(unitNumber || '1'),
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    // ── Mode 5: Send media (image / audio) ────────────────────────────────────
     else if (body.mode === 'media') {
       const { to, base64Media, mimeType, mediaType, caption } = body;
 
@@ -400,9 +430,9 @@ export async function handler(event, context) {
     } else if (body.mode === 'send_terms') {
       await saveMessage(body.to, { sender: 'admin', text: `[قالب الشروط: ${body.variableValue}]`, messageId });
     } else if (body.mode === 'entry_reminder') {
-      await saveMessage(body.to, { sender: 'bot', text: `[🔔 تذكير دخول: الوحدة ${body.unitNumber || '101'}]`, messageId });
-    } else if (body.mode === 'reminder') {
-      await saveMessage(body.to, { sender: 'bot', text: `[🔔 تذكير خروج: الوحدة ${body.unitNumber || '101'}]`, messageId });
+      await saveMessage(body.to, { sender: 'admin', text: `[تنبيه دخول للوحدة ${body.unitNumber || '1'}]`, messageId });
+    } else if (body.mode === 'reminder' || body.mode === 'reminder_test') {
+      await saveMessage(body.to, { sender: 'admin', text: `[تنبيه خروج للوحدة ${body.unitNumber || '1'}]`, messageId });
     } else if (body.mode === 'booking_confirmation' || !body.mode) {
       await saveMessage(body.booking?.phone, { sender: 'admin', text: `[تأكيد حجز الوحدة ${body.unitNumber}]`, messageId });
     }

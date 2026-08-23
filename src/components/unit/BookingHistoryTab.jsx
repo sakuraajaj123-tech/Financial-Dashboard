@@ -1,3 +1,5 @@
+// BookingHistoryTab.jsx — Chronological booking log with WhatsApp action and Booking Details view
+
 import { useState } from 'react';
 import { MessageCircle, Phone, CheckCircle, Loader2, Trash2, Eye } from 'lucide-react';
 import { Button } from '../shared/Button';
@@ -59,7 +61,7 @@ function WhatsAppButton({ booking, unitNumber }) {
   );
 }
 
-export function BookingHistoryTab({ unit, onDeleteBooking, onViewBooking }) {
+export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
   const sortedBookings = [...(unit.bookings || [])].sort(
     (a, b) => parseISO(b.checkIn) - parseISO(a.checkIn)
   );
@@ -139,12 +141,12 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewBooking }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => onViewBooking && onViewBooking(booking, unit)}
-                        title="View / Edit Booking Details"
-                        className="px-2.5 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold border border-slate-600/50"
+                        onClick={() => onViewDetails && onViewDetails(booking, unit)}
+                        title="View & Edit Details"
+                        className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                       >
-                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Details</span>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Details</span>
                       </button>
                       <WhatsAppButton booking={booking} unitNumber={unit.number} />
                       <button
@@ -198,11 +200,11 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewBooking }) {
                 <span className="text-emerald-400 font-bold">SAR {booking.amount.toLocaleString()}</span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onViewBooking && onViewBooking(booking, unit)}
-                    title="View Booking Details"
-                    className="px-2 py-1 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    onClick={() => onViewDetails && onViewDetails(booking, unit)}
+                    title="View & Edit Details"
+                    className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                   >
-                    <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                    <Eye className="w-3.5 h-3.5" />
                     <span>Details</span>
                   </button>
                   <WhatsAppButton booking={booking} unitNumber={unit.number} />
@@ -223,3 +225,4 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewBooking }) {
     </div>
   );
 }
+

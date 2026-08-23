@@ -1,304 +1,213 @@
 // netlify/functions/booking-reminders.js
-// Netlify Scheduled Function - runs every 5 minutes via cron: */5 * * * *
-// Also accessible via HTTP GET/POST at /api/reminders/trigger for diagnostics and manual testing.
-//
-// Logic condition:
-//   1. Query: pending_reminders WHERE triggerTime <= NOW_ISO
-//   2. Send template 'entry_reminder' or 'reminder' to all adminPhoneNumbers in settings/global_settings
-//   3. Delete the processed reminder doc so it never sends duplicate messages
-//   4. Auto-backfills pending_reminders if any active booking in units collection was created previously
+// Netlify Scheduled Function running every 5 minutes to process pending WhatsApp reminders
+// Strictly follows the Zero-Cost Indexed Queue Architecture (~576 reads/day = 1.15% of Firebase Free Tier)
 
 import { schedule } from '@netlify/functions';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 
-// Firebase Admin initializer (lazy singleton)
 function getDb() {
   const rawCreds = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!rawCreds) {
-    throw new Error('[booking-reminders] FIREBASE_SERVICE_ACCOUNT env var is not set.');
-  }
+  if (!rawCreds) return null;
   if (getApps().length === 0) {
-    const serviceAccount =
-      typeof rawCreds === 'string' ? JSON.parse(rawCreds) : rawCreds;
+    const serviceAccount = typeof rawCreds === 'string' ? JSON.parse(rawCreds) : rawCreds;
     if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
     initializeApp({ credential: cert(serviceAccount) });
   }
-  return getFirestore();
+  return getAdminFirestore();
 }
 
-// Send one WhatsApp template message via Meta Cloud API
-async function sendTemplate(to, templateName, unitNumber) {
+async function logOutgoingReminder(db, phone, reminder, templateName, unitNumber) {
+  try {
+    const cleanPhone = phone.replace('+', '').trim();
+    const chatRef = db.collection('chats').doc(cleanPhone);
+    const textLabel = reminder.type === 'entry'
+      ? `[تذكير دخول تلقائي: وحدة ${unitNumber}]`
+      : `[تذكير خروج تلقائي: وحدة ${unitNumber}]`;
+
+    await chatRef.set(
+      {
+        lastMessage: textLabel,
+        lastMessageAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await chatRef.collection('messages').add({
+      sender: 'system_reminder',
+      text: textLabel,
+      timestamp: FieldValue.serverTimestamp(),
+      isRead: true,
+      status: 'sent',
+      template: templateName,
+      unitNumber,
+    });
+  } catch (err) {
+    console.error(`[Reminders] Failed to log reminder to chat for ${phone}:`, err.message);
+  }
+}
+
+async function processRemindersCore(event) {
+  console.log('[Reminders Cron] ⏰ Running reminder queue check at', new Date().toISOString());
+
+  const db = getDb();
+  if (!db) {
+    console.error('[Reminders Cron] ❌ FIREBASE_SERVICE_ACCOUNT not configured');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Firebase Admin credentials not configured on server' }),
+    };
+  }
+
   const PHONE_NUMBER_ID =
-    process.env.META_PHONE_NUMBER_ID || process.env.VITE_META_PHONE_NUMBER_ID;
+    process.env.META_PHONE_NUMBER_ID ||
+    process.env.VITE_META_PHONE_NUMBER_ID ||
+    '1244951792043253';
   const ACCESS_TOKEN =
-    process.env.META_ACCESS_TOKEN || process.env.VITE_META_ACCESS_TOKEN;
+    process.env.META_ACCESS_TOKEN ||
+    process.env.VITE_META_ACCESS_TOKEN;
 
   if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
-    throw new Error('[booking-reminders] Meta API credentials are not configured.');
+    console.error('[Reminders Cron] ❌ Meta Cloud API credentials not configured');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Meta credentials not configured on server' }),
+    };
   }
-
-  const endpoint = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
-  const cleanTo  = String(to).replace(/[^0-9]/g, '');
-
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: cleanTo,
-    type: 'template',
-    template: {
-      name: templateName,
-      language: { code: 'ar' },
-      components: [
-        {
-          type: 'body',
-          parameters: [{ type: 'text', text: String(unitNumber) }],
-        },
-      ],
-    },
-  };
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(
-      `Meta API error sending "${templateName}" to ${cleanTo}: ${JSON.stringify(data)}`
-    );
-  }
-
-  return data;
-}
-
-// Fan-out template to all admin numbers via Promise.allSettled
-async function fanOut(adminPhones, templateName, unitNumber) {
-  if (!adminPhones || adminPhones.length === 0) {
-    console.warn(`[booking-reminders] No admin phones - skipping "${templateName}" unit ${unitNumber}`);
-    return [];
-  }
-
-  const results = await Promise.allSettled(
-    adminPhones.map((phone) => sendTemplate(phone, templateName, unitNumber))
-  );
-
-  results.forEach((result, i) => {
-    const phone = adminPhones[i];
-    if (result.status === 'fulfilled') {
-      console.log(`[booking-reminders] Sent "${templateName}" -> ${phone} (unit ${unitNumber})`);
-    } else {
-      console.error(
-        `[booking-reminders] Failed "${templateName}" -> ${phone} (unit ${unitNumber}):`,
-        result.reason?.message || result.reason
-      );
-    }
-  });
-
-  return results;
-}
-
-// Helper to backfill any existing bookings that were missing from pending_reminders
-async function syncExistingBookingsIfNeeded(db) {
-  try {
-    const unitsSnap = await db.collection('units').get();
-    const batch = db.batch();
-    let backfilledCount = 0;
-
-    for (const unitDoc of unitsSnap.docs) {
-      const unit = unitDoc.data();
-      const unitNumber = unit.number ?? unitDoc.id;
-      const bookings = Array.isArray(unit.bookings) ? unit.bookings : [];
-
-      for (const booking of bookings) {
-        if (!booking.id || !booking.checkIn || !booking.checkOut) continue;
-
-        const entryId = `${booking.id}_entry`;
-        const exitId  = `${booking.id}_exit`;
-
-        const entryRef = db.collection('pending_reminders').doc(entryId);
-        const exitRef  = db.collection('pending_reminders').doc(exitId);
-
-        const entrySnap = await entryRef.get();
-        const exitSnap  = await exitRef.get();
-
-        const entryOffsetMs = (Number(booking.entryReminderMinutes) || 180) * 60 * 1000;
-        const exitOffsetMs  = (Number(booking.exitReminderMinutes)  || 15)  * 60 * 1000;
-
-        const checkInMs  = Date.parse(booking.checkIn);
-        const checkOutMs = Date.parse(booking.checkOut);
-
-        if (!isNaN(checkInMs) && !entrySnap.exists) {
-          const entryTrigger = new Date(checkInMs - entryOffsetMs).toISOString();
-          batch.set(entryRef, {
-            bookingId: booking.id,
-            unitId: unitDoc.id,
-            unitNumber: String(unitNumber),
-            type: 'entry',
-            template: 'entry_reminder',
-            triggerTime: entryTrigger,
-            entryReminderMinutes: Number(booking.entryReminderMinutes) || 180,
-            createdAt: new Date().toISOString(),
-          });
-          backfilledCount++;
-        }
-
-        if (!isNaN(checkOutMs) && !exitSnap.exists) {
-          const exitTrigger = new Date(checkOutMs - exitOffsetMs).toISOString();
-          batch.set(exitRef, {
-            bookingId: booking.id,
-            unitId: unitDoc.id,
-            unitNumber: String(unitNumber),
-            type: 'exit',
-            template: 'reminder',
-            triggerTime: exitTrigger,
-            exitReminderMinutes: Number(booking.exitReminderMinutes) || 15,
-            createdAt: new Date().toISOString(),
-          });
-          backfilledCount++;
-        }
-      }
-    }
-
-    if (backfilledCount > 0) {
-      await batch.commit();
-      console.log(`[booking-reminders] Backfilled ${backfilledCount} missing reminders.`);
-    }
-  } catch (e) {
-    console.warn('[booking-reminders] Auto-backfill non-fatal error:', e.message);
-  }
-}
-
-// Core reminder runner
-async function remindersHandler(event) {
-  const startTime = new Date().toISOString();
-  console.log('[booking-reminders] Cron / Trigger fired at', startTime);
 
   try {
-    const db = getDb();
+    const nowIso = new Date().toISOString();
 
-    // 1. Fetch admin phone numbers (1 read)
-    const settingsSnap = await db
-      .collection('settings')
-      .doc('global_settings')
+    // 1. Single Indexed Query on pending_reminders (Zero-Cost strategy: only reads due documents)
+    const remindersRef = db.collection('pending_reminders');
+    const dueSnapshot = await remindersRef
+      .where('triggerTime', '<=', nowIso)
+      .limit(50)
       .get();
 
-    const adminPhones = settingsSnap.exists
-      ? settingsSnap.data().adminPhoneNumbers || []
-      : [];
-
-    console.log(`[booking-reminders] Admin phones: [${adminPhones.join(', ')}]`);
-
-    // 2. Ensure existing bookings have reminder docs (safe self-healing)
-    await syncExistingBookingsIfNeeded(db);
-
-    // 3. Query ONLY due reminders from the indexed collection
-    const nowISO = new Date().toISOString();
-
-    const dueSnap = await db
-      .collection('pending_reminders')
-      .where('triggerTime', '<=', nowISO)
-      .get();
-
-    // Also get all pending reminders count for diagnostic overview
-    const allPendingSnap = await db.collection('pending_reminders').get();
-    const allPendingList = allPendingSnap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      isDue: d.data().triggerTime <= nowISO,
-    }));
-
-    if (dueSnap.empty) {
-      console.log(`[booking-reminders] No reminders due at ${nowISO}. Total pending: ${allPendingSnap.size}`);
+    if (dueSnapshot.empty) {
+      console.log('[Reminders Cron] 💤 No reminders due at this time.');
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ok: true,
-          nowISO,
-          adminPhoneNumbers: adminPhones,
-          dueCount: 0,
-          totalPendingCount: allPendingSnap.size,
-          pendingReminders: allPendingList,
-          message: 'No reminders are due right now.',
+          message: 'No pending reminders due',
+          checkedAt: nowIso,
+          processed: 0,
         }),
       };
     }
 
-    console.log(`[booking-reminders] ${dueSnap.size} reminder(s) due.`);
+    console.log(`[Reminders Cron] 📬 Found ${dueSnapshot.docs.length} due reminder(s) to process.`);
 
-    // 4. Process each due reminder
-    let sent = 0;
-    const executionDetails = [];
+    // 2. Fetch admin phone numbers from settings/global_settings
+    const settingsDoc = await db.collection('settings').doc('global_settings').get();
+    let adminPhones = [];
+    if (settingsDoc.exists) {
+      const data = settingsDoc.data();
+      if (Array.isArray(data.adminPhones)) {
+        adminPhones = data.adminPhones.filter(Boolean);
+      }
+    }
 
-    await Promise.allSettled(
-      dueSnap.docs.map(async (reminderDoc) => {
-        const reminder = reminderDoc.data();
+    if (adminPhones.length === 0) {
+      console.warn('[Reminders Cron] ⚠️ No admin phone numbers configured in settings/global_settings.');
+    }
+
+    const endpoint = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
+    let sentCount = 0;
+    let failedCount = 0;
+
+    const batch = db.batch();
+
+    // 3. Process each due reminder
+    for (const docSnap of dueSnapshot.docs) {
+      const reminder = docSnap.data();
+      const unitNumber = String(reminder.unitNumber || '1');
+      const templateName = reminder.template || (reminder.type === 'entry' ? 'entry_reminder' : 'reminder');
+
+      console.log(`[Reminders Cron] 🚀 Sending ${templateName} for Unit ${unitNumber} (Booking: ${reminder.bookingId})`);
+
+      for (const phone of adminPhones) {
+        const cleanPhone = phone.replace('+', '').trim();
+        const payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'template',
+          template: {
+            name: templateName,
+            language: { code: 'ar' },
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  { type: 'text', text: unitNumber },
+                ],
+              },
+            ],
+          },
+        };
 
         try {
-          // Send the WhatsApp template to all admins
-          const results = await fanOut(adminPhones, reminder.template, reminder.unitNumber);
-
-          // Delete the reminder doc so it NEVER fires again
-          await reminderDoc.ref.delete();
-
-          console.log(
-            `[booking-reminders] Reminder ${reminderDoc.id} processed and deleted.`
-          );
-          sent++;
-          executionDetails.push({
-            id: reminderDoc.id,
-            status: 'sent',
-            template: reminder.template,
-            unitNumber: reminder.unitNumber,
-            results,
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${ACCESS_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
           });
-        } catch (err) {
-          console.error(
-            `[booking-reminders] Error processing reminder ${reminderDoc.id}:`,
-            err.message
-          );
-          executionDetails.push({
-            id: reminderDoc.id,
-            status: 'error',
-            error: err.message,
-          });
+
+          const resData = await res.json();
+          if (res.ok) {
+            sentCount++;
+            console.log(`[Reminders Cron] ✅ Sent ${templateName} to ${cleanPhone}`);
+            await logOutgoingReminder(db, cleanPhone, reminder, templateName, unitNumber);
+          } else {
+            failedCount++;
+            console.error(`[Reminders Cron] ❌ Failed to send to ${cleanPhone}:`, JSON.stringify(resData));
+          }
+        } catch (netErr) {
+          failedCount++;
+          console.error(`[Reminders Cron] ❌ Network error sending to ${cleanPhone}:`, netErr.message);
         }
-      })
-    );
+      }
 
-    console.log(`[booking-reminders] Done. Sent: ${sent}/${dueSnap.size}`);
+      // 4. Delete processed reminder so it never fires again
+      batch.delete(docSnap.ref);
+    }
+
+    // Commit deletion batch
+    await batch.commit();
+    console.log(`[Reminders Cron] 🧹 Successfully deleted ${dueSnapshot.docs.length} processed reminder document(s).`);
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ok: true,
-        nowISO,
-        adminPhoneNumbers: adminPhones,
-        sentCount: sent,
-        dueCount: dueSnap.size,
-        totalPendingCount: allPendingSnap.size,
-        executionDetails,
+        message: 'Reminders processed successfully',
+        checkedAt: nowIso,
+        remindersProcessed: dueSnapshot.docs.length,
+        messagesSent: sentCount,
+        messagesFailed: failedCount,
+        adminRecipients: adminPhones.length,
       }),
     };
   } catch (err) {
-    console.error('[booking-reminders] Fatal error:', err);
+    console.error('[Reminders Cron] 💥 Unhandled error processing reminders:', err);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ok: false, error: err.message }),
+      body: JSON.stringify({ error: err.message }),
     };
   }
 }
 
-// Export using @netlify/functions schedule wrapper
-export const handler = schedule('*/5 * * * *', remindersHandler);
+// Scheduled wrapper runs every 5 minutes on Netlify, while also responding to HTTP invokes
+export const handler = schedule('*/5 * * * *', processRemindersCore);

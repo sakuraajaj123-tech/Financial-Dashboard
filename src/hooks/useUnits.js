@@ -17,63 +17,10 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 
-const UNITS_COLLECTION      = 'units';
-const REMINDERS_COLLECTION  = 'pending_reminders';
+const UNITS_COLLECTION = 'units';
+const REMINDERS_COLLECTION = 'pending_reminders';
 
-// ─── Build the two reminder docs for a booking ─────────────────────────────
-// ISO strings sort lexicographically correctly, so the scheduled function
-// can query:  where('triggerTime', '<=', now.toISOString())
-function buildReminderDocs(
-  bookingId,
-  unitId,
-  unitNumber,
-  checkIn,
-  checkOut,
-  entryReminderMinutes = 180,
-  exitReminderMinutes = 15
-) {
-  const entryOffsetMs = (Number(entryReminderMinutes) || 180) * 60 * 1000;
-  const exitOffsetMs  = (Number(exitReminderMinutes) || 15) * 60 * 1000;
-
-  const entryTrigger = new Date(
-    new Date(checkIn).getTime() - entryOffsetMs
-  ).toISOString();
-
-  const exitTrigger = new Date(
-    new Date(checkOut).getTime() - exitOffsetMs
-  ).toISOString();
-
-  return [
-    {
-      id:          `${bookingId}_entry`,
-      data: {
-        bookingId,
-        unitId,
-        unitNumber:           String(unitNumber),
-        type:                 'entry',
-        template:             'entry_reminder',
-        triggerTime:          entryTrigger,
-        entryReminderMinutes: Number(entryReminderMinutes) || 180,
-        createdAt:            new Date().toISOString(),
-      },
-    },
-    {
-      id:          `${bookingId}_exit`,
-      data: {
-        bookingId,
-        unitId,
-        unitNumber:          String(unitNumber),
-        type:                'exit',
-        template:            'reminder',
-        triggerTime:         exitTrigger,
-        exitReminderMinutes: Number(exitReminderMinutes) || 15,
-        createdAt:           new Date().toISOString(),
-      },
-    },
-  ];
-}
-
-// ─── Pure helpers (unchanged) ──────────────────────────────────────────────
+// ─── Pure helpers ──────────────────────────────────────────────────────────
 
 function computeCurrentBooking(unit) {
   const today = new Date();
@@ -99,6 +46,21 @@ function enrichUnit(raw) {
 
 function generateId() {
   return `b-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Calculates exact ISO timestamp for when a reminder should trigger.
+ * @param {string} dateStr 'YYYY-MM-DD'
+ * @param {string} timeStr 'HH:mm'
+ * @param {number} offsetMinutes Minutes before the event to trigger
+ * @returns {string} ISO date string in UTC
+ */
+export function calculateTriggerTime(dateStr, timeStr = '16:00', offsetMinutes = 0) {
+  if (!dateStr) return new Date().toISOString();
+  const time = timeStr || '12:00';
+  const localDate = new Date(`${dateStr}T${time}:00`);
+  const triggerMs = localDate.getTime() - Number(offsetMinutes || 0) * 60 * 1000;
+  return new Date(triggerMs).toISOString();
 }
 
 // ─── Seed Firestore with default units if collection is empty ─────────────
@@ -213,163 +175,193 @@ export function useUnits() {
     };
   }, [units]);
 
-  // ─── Add Booking — atomic batch write ────────────────────────────────────
-  // Simultaneously:
-  //   1. Appends the new booking to units/{unitId}.bookings
-  //   2. Creates pending_reminders/{bookingId}_entry
-  //   3. Creates pending_reminders/{bookingId}_exit
-  // All three succeed or all three fail — no orphaned reminders possible.
+  // ─── Add Booking (Firestore Atomic Batch) ─────────────────────────────
   const addBooking = useCallback(async (unitId, bookingData) => {
+    const bookingId = generateId();
+    const checkInTime = bookingData.checkInTime || '16:00';
+    const checkOutTime = bookingData.checkOutTime || '13:00';
+    const entryReminderMinutes = Number(bookingData.entryReminderMinutes ?? 180);
+    const exitReminderMinutes = Number(bookingData.exitReminderMinutes ?? 15);
+
     const newBooking = {
-      id:                   generateId(),
-      tenantName:           bookingData.tenantName,
-      phone:                bookingData.phone,
-      source:               bookingData.source || BOOKING_SOURCES.DIRECT,
-      // Full ISO 8601 strings (date + time) for accurate reminder scheduling
-      checkIn:              bookingData.checkIn,
-      checkOut:             bookingData.checkOut,
-      // Store the time-of-day separately for quick display/reference
-      checkInTime:          bookingData.checkInTime  || '16:00',
-      checkOutTime:         bookingData.checkOutTime || '13:00',
-      // Reminder offsets in minutes (defaults: 180 min = 3h, 15 min)
-      entryReminderMinutes: Number(bookingData.entryReminderMinutes) || 180,
-      exitReminderMinutes:  Number(bookingData.exitReminderMinutes)  || 15,
-      amount:               Number(bookingData.amount),
-      notes:                bookingData.notes || '',
+      id: bookingId,
+      tenantName: bookingData.tenantName,
+      phone: bookingData.phone,
+      source: bookingData.source || BOOKING_SOURCES.DIRECT,
+      checkIn: bookingData.checkIn,
+      checkInTime,
+      checkOut: bookingData.checkOut,
+      checkOutTime,
+      entryReminderMinutes,
+      exitReminderMinutes,
+      amount: Number(bookingData.amount) || 0,
+      notes: bookingData.notes || '',
     };
 
-    // Resolve the unit number for reminder docs (need unit from current state)
-    // unitNumber is not passed in bookingData — look it up from the units collection
-    try {
-      const unitRef  = doc(db, UNITS_COLLECTION, unitId);
-      const unitSnap = await getDoc(unitRef);
-      const unitNumber = unitSnap.exists() ? (unitSnap.data().number ?? unitId) : unitId;
-
-      // Build the two reminder descriptors with custom or default offsets
-      const reminderDocs = buildReminderDocs(
-        newBooking.id,
-        unitId,
-        unitNumber,
-        newBooking.checkIn,
-        newBooking.checkOut,
-        newBooking.entryReminderMinutes,
-        newBooking.exitReminderMinutes
-      );
-
-      // Atomic batch: booking write + 2 reminder writes
-      const batch = writeBatch(db);
-
-      // 1. Append booking to unit
-      batch.update(unitRef, { bookings: arrayUnion(newBooking) });
-
-      // 2 & 3. Create reminder docs
-      for (const reminder of reminderDocs) {
-        const reminderRef = doc(db, REMINDERS_COLLECTION, reminder.id);
-        batch.set(reminderRef, reminder.data);
-      }
-
-      await batch.commit();
-      console.log(`[PMS] Booking ${newBooking.id} added with ${reminderDocs.length} reminders (atomic batch).`);
-    } catch (err) {
-      console.error('[PMS] Failed to add booking (batch):', err);
-      throw err; // re-throw so callers can surface the error
-    }
-  }, []);
-
-  // ─── Delete Booking — atomic batch write ─────────────────────────────────
-  // Simultaneously:
-  //   1. Removes the booking from units/{unitId}.bookings array
-  //   2. Deletes pending_reminders/{bookingId}_entry
-  //   3. Deletes pending_reminders/{bookingId}_exit
-  // All three succeed or all three fail — no orphaned reminder docs possible.
-  const deleteBooking = useCallback(async (unitId, bookingId) => {
     try {
       const unitRef = doc(db, UNITS_COLLECTION, unitId);
+      const unitSnap = await getDoc(unitRef);
+      const unitData = unitSnap.exists() ? unitSnap.data() : {};
+      const unitNumber = String(unitData.number || '');
 
-      // Read is always required before a batch array-rewrite
-      const snap = await getDoc(unitRef);
-      if (!snap.exists()) return;
+      const entryTrigger = calculateTriggerTime(newBooking.checkIn, checkInTime, entryReminderMinutes);
+      const exitTrigger = calculateTriggerTime(newBooking.checkOut, checkOutTime, exitReminderMinutes);
 
-      const currentBookings = snap.data().bookings || [];
-      const filtered = currentBookings.filter((b) => b.id !== bookingId);
-
-      // Atomic batch: booking removal + 2 reminder deletions
       const batch = writeBatch(db);
 
-      // 1. Overwrite bookings array without the deleted booking
-      batch.update(unitRef, { bookings: filtered });
-
-      // 2 & 3. Delete both reminder docs (they may already be gone if they fired — that's fine)
-      batch.delete(doc(db, REMINDERS_COLLECTION, `${bookingId}_entry`));
-      batch.delete(doc(db, REMINDERS_COLLECTION, `${bookingId}_exit`));
-
-      await batch.commit();
-      console.log(`[PMS] Booking ${bookingId} deleted with reminders (atomic batch).`);
-    } catch (err) {
-      console.error('[PMS] Failed to delete booking (batch):', err);
-    }
-  }, []);
-
-  // ─── Update Booking — atomic batch write ─────────────────────────────────
-  // Simultaneously:
-  //   1. Updates the booking in units/{unitId}.bookings
-  //   2. Updates/overwrites pending_reminders/{bookingId}_entry
-  //   3. Updates/overwrites pending_reminders/{bookingId}_exit
-  const updateBooking = useCallback(async (unitId, bookingId, updatedData) => {
-    try {
-      const unitRef  = doc(db, UNITS_COLLECTION, unitId);
-      const unitSnap = await getDoc(unitRef);
-      if (!unitSnap.exists()) return;
-
-      const currentBookings = unitSnap.data().bookings || [];
-      const updatedBookings = currentBookings.map((b) => {
-        if (b.id === bookingId) {
-          return {
-            ...b,
-            tenantName:           updatedData.tenantName,
-            phone:                updatedData.phone,
-            source:               updatedData.source || BOOKING_SOURCES.DIRECT,
-            checkIn:              updatedData.checkIn,
-            checkOut:             updatedData.checkOut,
-            checkInTime:          updatedData.checkInTime  || '16:00',
-            checkOutTime:         updatedData.checkOutTime || '13:00',
-            entryReminderMinutes: Number(updatedData.entryReminderMinutes) || 180,
-            exitReminderMinutes:  Number(updatedData.exitReminderMinutes)  || 15,
-            amount:               Number(updatedData.amount),
-            notes:                updatedData.notes || '',
-          };
-        }
-        return b;
+      // 1. Update unit bookings array
+      batch.update(unitRef, {
+        bookings: arrayUnion(newBooking),
       });
 
-      const unitNumber = unitSnap.data().number ?? unitId;
-
-      // Re-build reminders for this booking with the updated dates/times
-      const reminderDocs = buildReminderDocs(
+      // 2. Add pending entry reminder
+      const entryRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_entry`);
+      batch.set(entryRef, {
+        id: `${bookingId}_entry`,
         bookingId,
         unitId,
         unitNumber,
-        updatedData.checkIn,
-        updatedData.checkOut,
-        updatedData.entryReminderMinutes,
-        updatedData.exitReminderMinutes
-      );
+        type: 'entry',
+        template: 'entry_reminder',
+        triggerTime: entryTrigger,
+        tenantName: newBooking.tenantName,
+        phone: newBooking.phone,
+        checkIn: newBooking.checkIn,
+        checkInTime,
+        createdAt: new Date().toISOString(),
+      });
+
+      // 3. Add pending exit reminder
+      const exitRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_exit`);
+      batch.set(exitRef, {
+        id: `${bookingId}_exit`,
+        bookingId,
+        unitId,
+        unitNumber,
+        type: 'exit',
+        template: 'reminder',
+        triggerTime: exitTrigger,
+        tenantName: newBooking.tenantName,
+        phone: newBooking.phone,
+        checkOut: newBooking.checkOut,
+        checkOutTime,
+        createdAt: new Date().toISOString(),
+      });
+
+      await batch.commit();
+      console.log(`[PMS] ✅ Booking & reminders atomically created for Unit ${unitNumber}`);
+    } catch (err) {
+      console.error('[PMS] ❌ Failed to add booking atomically:', err);
+      throw err;
+    }
+  }, []);
+
+  // ─── Update Booking (Firestore Atomic Batch) ──────────────────────────
+  const updateBooking = useCallback(async (unitId, bookingId, updatedData) => {
+    const checkInTime = updatedData.checkInTime || '16:00';
+    const checkOutTime = updatedData.checkOutTime || '13:00';
+    const entryReminderMinutes = Number(updatedData.entryReminderMinutes ?? 180);
+    const exitReminderMinutes = Number(updatedData.exitReminderMinutes ?? 15);
+
+    const updatedBooking = {
+      id: bookingId,
+      tenantName: updatedData.tenantName,
+      phone: updatedData.phone,
+      source: updatedData.source || BOOKING_SOURCES.DIRECT,
+      checkIn: updatedData.checkIn,
+      checkInTime,
+      checkOut: updatedData.checkOut,
+      checkOutTime,
+      entryReminderMinutes,
+      exitReminderMinutes,
+      amount: Number(updatedData.amount) || 0,
+      notes: updatedData.notes || '',
+    };
+
+    try {
+      const unitRef = doc(db, UNITS_COLLECTION, unitId);
+      const unitSnap = await getDoc(unitRef);
+      if (!unitSnap.exists()) return;
+
+      const unitData = unitSnap.data();
+      const currentBookings = unitData.bookings || [];
+      const updatedBookings = currentBookings.map((b) => (b.id === bookingId ? updatedBooking : b));
+      const unitNumber = String(unitData.number || '');
+
+      const entryTrigger = calculateTriggerTime(updatedBooking.checkIn, checkInTime, entryReminderMinutes);
+      const exitTrigger = calculateTriggerTime(updatedBooking.checkOut, checkOutTime, exitReminderMinutes);
 
       const batch = writeBatch(db);
 
       // 1. Update unit bookings array
       batch.update(unitRef, { bookings: updatedBookings });
 
-      // 2 & 3. Overwrite reminder docs
-      for (const reminder of reminderDocs) {
-        const reminderRef = doc(db, REMINDERS_COLLECTION, reminder.id);
-        batch.set(reminderRef, reminder.data);
-      }
+      // 2. Overwrite pending entry reminder
+      const entryRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_entry`);
+      batch.set(entryRef, {
+        id: `${bookingId}_entry`,
+        bookingId,
+        unitId,
+        unitNumber,
+        type: 'entry',
+        template: 'entry_reminder',
+        triggerTime: entryTrigger,
+        tenantName: updatedBooking.tenantName,
+        phone: updatedBooking.phone,
+        checkIn: updatedBooking.checkIn,
+        checkInTime,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // 3. Overwrite pending exit reminder
+      const exitRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_exit`);
+      batch.set(exitRef, {
+        id: `${bookingId}_exit`,
+        bookingId,
+        unitId,
+        unitNumber,
+        type: 'exit',
+        template: 'reminder',
+        triggerTime: exitTrigger,
+        tenantName: updatedBooking.tenantName,
+        phone: updatedBooking.phone,
+        checkOut: updatedBooking.checkOut,
+        checkOutTime,
+        updatedAt: new Date().toISOString(),
+      });
 
       await batch.commit();
-      console.log(`[PMS] Booking ${bookingId} updated with reminders (atomic batch).`);
+      console.log(`[PMS] ✅ Booking & reminders atomically updated for Unit ${unitNumber}`);
     } catch (err) {
-      console.error('[PMS] Failed to update booking (batch):', err);
+      console.error('[PMS] ❌ Failed to update booking atomically:', err);
+      throw err;
+    }
+  }, []);
+
+  // ─── Delete Booking (Firestore Atomic Batch) ──────────────────────────
+  const deleteBooking = useCallback(async (unitId, bookingId) => {
+    try {
+      const unitRef = doc(db, UNITS_COLLECTION, unitId);
+      const snap = await getDoc(unitRef);
+      if (!snap.exists()) return;
+
+      const currentBookings = snap.data().bookings || [];
+      const filtered = currentBookings.filter((b) => b.id !== bookingId);
+
+      const batch = writeBatch(db);
+      // 1. Remove from unit bookings
+      batch.update(unitRef, { bookings: filtered });
+
+      // 2. Delete pending entry & exit reminders
+      const entryRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_entry`);
+      const exitRef = doc(db, REMINDERS_COLLECTION, `${bookingId}_exit`);
+      batch.delete(entryRef);
+      batch.delete(exitRef);
+
+      await batch.commit();
+      console.log(`[PMS] ✅ Booking & associated reminders deleted for ID ${bookingId}`);
+    } catch (err) {
+      console.error('[PMS] ❌ Failed to delete booking atomically:', err);
       throw err;
     }
   }, []);

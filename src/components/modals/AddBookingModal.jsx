@@ -1,3 +1,5 @@
+// AddBookingModal.jsx — Modal form for booking creation and details/edit mode
+
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Phone, Calendar, DollarSign, Home, FileText, Clock, Bell } from 'lucide-react';
 import { Button } from '../shared/Button';
@@ -6,18 +8,35 @@ import { useTranslation } from 'react-i18next';
 import { BookingCalendarPicker } from './BookingCalendarPicker';
 import { parseISO, isBefore, isAfter, startOfDay } from 'date-fns';
 
+const ENTRY_REMINDER_OPTIONS = [
+  { value: 15, labelEn: '15 minutes before', labelAr: 'قبل 15 دقيقة' },
+  { value: 30, labelEn: '30 minutes before', labelAr: 'قبل 30 دقيقة' },
+  { value: 60, labelEn: '1 hour before', labelAr: 'قبل ساعة واحدة' },
+  { value: 120, labelEn: '2 hours before', labelAr: 'قبل ساعتين' },
+  { value: 180, labelEn: '3 hours before (Default)', labelAr: 'قبل 3 ساعات (افتراضي)' },
+  { value: 360, labelEn: '6 hours before', labelAr: 'قبل 6 ساعات' },
+  { value: 720, labelEn: '12 hours before', labelAr: 'قبل 12 ساعة' },
+  { value: 1440, labelEn: '24 hours before', labelAr: 'قبل 24 ساعة (يوم)' },
+];
+
+const EXIT_REMINDER_OPTIONS = [
+  { value: 15, labelEn: '15 minutes before (Default)', labelAr: 'قبل 15 دقيقة (افتراضي)' },
+  { value: 30, labelEn: '30 minutes before', labelAr: 'قبل 30 دقيقة' },
+  { value: 60, labelEn: '1 hour before', labelAr: 'قبل ساعة واحدة' },
+  { value: 120, labelEn: '2 hours before', labelAr: 'قبل ساعتين' },
+  { value: 180, labelEn: '3 hours before', labelAr: 'قبل 3 ساعات' },
+];
+
 const initialForm = {
   unitId: '',
   tenantName: '',
   phone: '',
   checkIn: '',
-  checkOut: '',
   checkInTime: '16:00',
+  checkOut: '',
   checkOutTime: '13:00',
-  entryReminderMinutes: '180', // Default: 3 hours before check-in
-  exitReminderMinutes: '15',   // Default: 15 minutes before check-out
-  customEntryMinutes: '',
-  customExitMinutes: '',
+  entryReminderMinutes: 180,
+  exitReminderMinutes: 15,
   source: BOOKING_SOURCES.DIRECT,
   amount: '',
   notes: '',
@@ -29,11 +48,11 @@ function InputWrapper({ label, error, icon: Icon, children }) {
   return (
     <div className="space-y-1.5">
       <label className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
-        {Icon && <Icon className="w-3 h-3" />}
+        {Icon && <Icon className="w-3.5 h-3.5 text-slate-400" />}
         {label}
       </label>
       {children}
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
     </div>
   );
 }
@@ -59,35 +78,6 @@ function hasOverlap(checkIn, checkOut, bookings, excludeBookingId = null) {
     });
 }
 
-// ─── Helpers to extract date & time safely ───────────────────────────────────
-
-function extractDateStr(isoOrDate) {
-  if (!isoOrDate) return '';
-  if (typeof isoOrDate === 'string' && isoOrDate.includes('T')) {
-    const d = new Date(isoOrDate);
-    if (!isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-  }
-  return typeof isoOrDate === 'string' ? isoOrDate : '';
-}
-
-function extractTimeStr(isoOrDate, fallback = '16:00') {
-  if (!isoOrDate) return fallback;
-  if (typeof isoOrDate === 'string' && isoOrDate.includes('T')) {
-    const d = new Date(isoOrDate);
-    if (!isNaN(d.getTime())) {
-      const hours = String(d.getHours()).padStart(2, '0');
-      const minutes = String(d.getMinutes()).padStart(2, '0');
-      return `${hours}:${minutes}`;
-    }
-  }
-  return fallback;
-}
-
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export function AddBookingModal({
@@ -97,51 +87,40 @@ export function AddBookingModal({
   preselectedUnit,
   initialBooking = null,
 }) {
-  const { t } = useTranslation();
-  const isEditMode = !!initialBooking;
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+  const isEdit = Boolean(initialBooking);
 
   const [form, setForm] = useState(() => {
     if (initialBooking) {
-      const checkInDate = extractDateStr(initialBooking.checkIn);
-      const checkOutDate = extractDateStr(initialBooking.checkOut);
-      const checkInTime = initialBooking.checkInTime || extractTimeStr(initialBooking.checkIn, '16:00');
-      const checkOutTime = initialBooking.checkOutTime || extractTimeStr(initialBooking.checkOut, '13:00');
-      const entryMin = initialBooking.entryReminderMinutes != null ? String(initialBooking.entryReminderMinutes) : '180';
-      const exitMin = initialBooking.exitReminderMinutes != null ? String(initialBooking.exitReminderMinutes) : '15';
-
-      const isPresetEntry = ['15', '30', '45', '60', '120', '180', '240', '360', '720', '1440'].includes(entryMin);
-      const isPresetExit = ['5', '10', '15', '30', '45', '60', '120', '180'].includes(exitMin);
-
       return {
-        unitId: initialBooking.unitId || preselectedUnit?.id || '',
+        unitId: preselectedUnit?.id || initialBooking.unitId || '',
         tenantName: initialBooking.tenantName || '',
         phone: initialBooking.phone || '',
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
-        checkInTime,
-        checkOutTime,
-        entryReminderMinutes: isPresetEntry ? entryMin : 'custom',
-        customEntryMinutes: isPresetEntry ? '' : entryMin,
-        exitReminderMinutes: isPresetExit ? exitMin : 'custom',
-        customExitMinutes: isPresetExit ? '' : exitMin,
+        checkIn: initialBooking.checkIn || '',
+        checkInTime: initialBooking.checkInTime || '16:00',
+        checkOut: initialBooking.checkOut || '',
+        checkOutTime: initialBooking.checkOutTime || '13:00',
+        entryReminderMinutes: initialBooking.entryReminderMinutes ?? 180,
+        exitReminderMinutes: initialBooking.exitReminderMinutes ?? 15,
         source: initialBooking.source || BOOKING_SOURCES.DIRECT,
-        amount: initialBooking.amount != null ? String(initialBooking.amount) : '',
+        amount: initialBooking.amount !== undefined ? String(initialBooking.amount) : '',
         notes: initialBooking.notes || '',
       };
     }
-
     return {
       ...initialForm,
       unitId: preselectedUnit?.id || '',
     };
   });
+
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const overlayRef = useRef(null);
   const firstInputRef = useRef(null);
 
   // Derive the bookings of the currently selected unit for the calendar
-  const selectedUnit = units.find((u) => u.id === form.unitId) || null;
+  const selectedUnit = units.find((u) => u.id === form.unitId) || preselectedUnit || null;
   const unitBookings = selectedUnit?.bookings || [];
 
   useEffect(() => {
@@ -165,8 +144,8 @@ export function AddBookingModal({
   function handleChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: null }));
-    // Clear date-range errors when either date or time changes
-    if (field === 'checkIn' || field === 'checkOut' || field === 'checkInTime' || field === 'checkOutTime') {
+    // Clear date-range errors when either date changes
+    if (field === 'checkIn' || field === 'checkOut') {
       setErrors((prev) => ({ ...prev, checkIn: null, checkOut: null, dateRange: null }));
     }
   }
@@ -178,10 +157,11 @@ export function AddBookingModal({
     if (!form.checkIn) errs.checkIn = t('modal.checkInRequired');
     if (!form.checkOut) errs.checkOut = t('modal.checkOutRequired');
     if (form.checkIn && form.checkOut) {
-      if (form.checkIn >= form.checkOut)
+      if (form.checkIn >= form.checkOut) {
         errs.checkOut = t('modal.checkOutBeforeCheckIn');
-      else if (hasOverlap(form.checkIn, form.checkOut, unitBookings, initialBooking?.id))
+      } else if (hasOverlap(form.checkIn, form.checkOut, unitBookings, initialBooking?.id)) {
         errs.dateRange = t('modal.datesOverlap') || 'These dates overlap with an existing booking.';
+      }
     }
     return errs;
   }
@@ -194,44 +174,31 @@ export function AddBookingModal({
       return;
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 300));
-
-    // Combine date + time into full ISO 8601 strings for accurate Firestore timestamps
-    const combineDateTime = (date, time) => {
-      if (!date) return date;
-      const t = time || '00:00';
-      return new Date(`${date}T${t}:00`).toISOString();
-    };
-
-    const effectiveEntryMinutes =
-      form.entryReminderMinutes === 'custom'
-        ? Number(form.customEntryMinutes) || 180
-        : Number(form.entryReminderMinutes) || 180;
-
-    const effectiveExitMinutes =
-      form.exitReminderMinutes === 'custom'
-        ? Number(form.customExitMinutes) || 15
-        : Number(form.exitReminderMinutes) || 15;
-
-    onSubmit(
-      form.unitId,
-      {
-        tenantName: form.tenantName.trim(),
-        phone: form.phone.trim(),
-        source: form.source,
-        checkIn: combineDateTime(form.checkIn, form.checkInTime),
-        checkOut: combineDateTime(form.checkOut, form.checkOutTime),
-        checkInTime: form.checkInTime,
-        checkOutTime: form.checkOutTime,
-        entryReminderMinutes: effectiveEntryMinutes,
-        exitReminderMinutes: effectiveExitMinutes,
-        amount: form.amount ? Number(form.amount) : 0,
-        notes: form.notes.trim(),
-      },
-      initialBooking?.id
-    );
-    setSubmitting(false);
-    onClose();
+    try {
+      await onSubmit(
+        form.unitId,
+        {
+          id: initialBooking?.id,
+          tenantName: form.tenantName.trim(),
+          phone: form.phone.trim(),
+          source: form.source,
+          checkIn: form.checkIn,
+          checkInTime: form.checkInTime || '16:00',
+          checkOut: form.checkOut,
+          checkOutTime: form.checkOutTime || '13:00',
+          entryReminderMinutes: Number(form.entryReminderMinutes),
+          exitReminderMinutes: Number(form.exitReminderMinutes),
+          amount: form.amount ? Number(form.amount) : 0,
+          notes: form.notes.trim(),
+        },
+        initialBooking?.id
+      );
+      onClose();
+    } catch (err) {
+      console.error('Failed to save booking:', err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -245,10 +212,10 @@ export function AddBookingModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-indigo-500/5 to-violet-500/5">
           <div>
             <h3 className="text-lg font-bold text-white">
-              {isEditMode ? t('modal.bookingDetails') : t('modal.newBooking')}
+              {isEdit ? t('modal.bookingDetails') : t('modal.newBooking')}
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              {isEditMode ? t('modal.bookingDetailsSubtitle') : t('modal.modalSubtitle')}
+              {isEdit ? t('modal.detailsSubtitle') : t('modal.modalSubtitle')}
             </p>
           </div>
           <button
@@ -266,12 +233,12 @@ export function AddBookingModal({
           <InputWrapper label={t('modal.unit')} error={errors.unitId} icon={Home}>
             <select
               value={form.unitId}
+              disabled={isEdit}
               onChange={(e) => {
                 handleChange('unitId', e.target.value);
-                // Reset dates when unit changes so calendar updates
                 setForm((prev) => ({ ...prev, unitId: e.target.value, checkIn: '', checkOut: '' }));
               }}
-              className={inputClass(errors.unitId)}
+              className={`${inputClass(errors.unitId)} ${isEdit ? 'opacity-75 cursor-not-allowed bg-slate-800/90' : ''}`}
             >
               <option value="">{t('modal.selectUnit')}</option>
               {units.map((u) => (
@@ -282,28 +249,29 @@ export function AddBookingModal({
             </select>
           </InputWrapper>
 
-          {/* Client name */}
-          <InputWrapper label={t('modal.clientName')} error={errors.tenantName} icon={User}>
-            <input
-              ref={!preselectedUnit ? firstInputRef : undefined}
-              type="text"
-              placeholder={t('modal.clientNamePlaceholder')}
-              value={form.tenantName}
-              onChange={(e) => handleChange('tenantName', e.target.value)}
-              className={inputClass(errors.tenantName)}
-            />
-          </InputWrapper>
+          {/* Client name + Phone row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputWrapper label={t('modal.clientName')} error={errors.tenantName} icon={User}>
+              <input
+                ref={!preselectedUnit && !isEdit ? firstInputRef : undefined}
+                type="text"
+                placeholder={t('modal.clientNamePlaceholder')}
+                value={form.tenantName}
+                onChange={(e) => handleChange('tenantName', e.target.value)}
+                className={inputClass(errors.tenantName)}
+              />
+            </InputWrapper>
 
-          {/* Phone (Optional) */}
-          <InputWrapper label={t('modal.phone')} error={errors.phone} icon={Phone}>
-            <input
-              type="tel"
-              placeholder={t('modal.phonePlaceholder')}
-              value={form.phone}
-              onChange={(e) => handleChange('phone', e.target.value)}
-              className={inputClass(errors.phone)}
-            />
-          </InputWrapper>
+            <InputWrapper label={t('modal.phone')} error={errors.phone} icon={Phone}>
+              <input
+                type="tel"
+                placeholder={t('modal.phonePlaceholder')}
+                value={form.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className={inputClass(errors.phone)}
+              />
+            </InputWrapper>
+          </div>
 
           {/* Date pickers — side by side, each with its own calendar */}
           <div>
@@ -311,7 +279,7 @@ export function AddBookingModal({
               {/* Check-in */}
               <div className="space-y-1.5">
                 <label className={`flex items-center gap-1.5 text-xs font-medium ${errors.checkIn ? 'text-rose-400' : 'text-slate-400'}`}>
-                  <Calendar className="w-3 h-3" />
+                  <Calendar className="w-3.5 h-3.5" />
                   {t('modal.checkIn')}
                   {form.checkIn && (
                     <span className="ml-auto text-indigo-400 font-semibold tabular-nums">
@@ -323,68 +291,16 @@ export function AddBookingModal({
                   value={form.checkIn}
                   onChange={(val) => handleChange('checkIn', val)}
                   bookings={unitBookings}
-                  minDate={new Date()}
+                  minDate={isEdit ? undefined : new Date()}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
-                {/* Check-in time & reminder controls */}
-                <div className="mt-2.5 space-y-2 p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  {/* Time input */}
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                    <span className="text-xs text-slate-400 flex-1">{t('modal.checkInTime')}</span>
-                    <input
-                      type="time"
-                      value={form.checkInTime}
-                      onChange={(e) => handleChange('checkInTime', e.target.value)}
-                      className="w-28 bg-slate-900/80 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/40 transition-colors"
-                    />
-                  </div>
-
-                  {/* Reminder offset selector */}
-                  <div className="flex items-center gap-2 pt-1.5 border-t border-slate-700/30">
-                    <Bell className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                    <span className="text-xs text-slate-400 flex-1">{t('modal.reminderBefore')}</span>
-                    <select
-                      value={form.entryReminderMinutes}
-                      onChange={(e) => handleChange('entryReminderMinutes', e.target.value)}
-                      className="w-44 bg-slate-900/80 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/40 transition-colors"
-                    >
-                      <option value="15">{t('modal.preset15m')}</option>
-                      <option value="30">{t('modal.preset30m')}</option>
-                      <option value="45">{t('modal.preset45m')}</option>
-                      <option value="60">{t('modal.preset1h')}</option>
-                      <option value="120">{t('modal.preset2h')}</option>
-                      <option value="180">{t('modal.preset3h')}</option>
-                      <option value="240">{t('modal.preset4h')}</option>
-                      <option value="360">{t('modal.preset6h')}</option>
-                      <option value="720">{t('modal.preset12h')}</option>
-                      <option value="1440">{t('modal.preset24h')}</option>
-                      <option value="custom">{t('modal.customMinutes')}</option>
-                    </select>
-                  </div>
-
-                  {/* Custom minutes input if selected */}
-                  {form.entryReminderMinutes === 'custom' && (
-                    <div className="flex items-center gap-2 pl-5 rtl:pr-5 rtl:pl-0 pt-1">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="180"
-                        value={form.customEntryMinutes}
-                        onChange={(e) => handleChange('customEntryMinutes', e.target.value)}
-                        className="w-24 bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-amber-500/40"
-                      />
-                      <span className="text-[11px] text-slate-400">{t('modal.minutes')}</span>
-                    </div>
-                  )}
-                </div>
-                {errors.checkIn && <p className="text-xs text-rose-400">{errors.checkIn}</p>}
+                {errors.checkIn && <p className="text-xs text-rose-400 font-medium">{errors.checkIn}</p>}
               </div>
 
               {/* Check-out */}
               <div className="space-y-1.5">
                 <label className={`flex items-center gap-1.5 text-xs font-medium ${errors.checkOut ? 'text-rose-400' : 'text-slate-400'}`}>
-                  <Calendar className="w-3 h-3" />
+                  <Calendar className="w-3.5 h-3.5" />
                   {t('modal.checkOut')}
                   {form.checkOut && (
                     <span className="ml-auto text-indigo-400 font-semibold tabular-nums">
@@ -396,61 +312,10 @@ export function AddBookingModal({
                   value={form.checkOut}
                   onChange={(val) => handleChange('checkOut', val)}
                   bookings={unitBookings}
-                  minDate={form.checkIn ? new Date(form.checkIn) : new Date()}
+                  minDate={form.checkIn ? new Date(form.checkIn) : (isEdit ? undefined : new Date())}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
-
-                {/* Check-out time & reminder controls */}
-                <div className="mt-2.5 space-y-2 p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  {/* Time input */}
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                    <span className="text-xs text-slate-400 flex-1">{t('modal.checkOutTime')}</span>
-                    <input
-                      type="time"
-                      value={form.checkOutTime}
-                      onChange={(e) => handleChange('checkOutTime', e.target.value)}
-                      className="w-28 bg-slate-900/80 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/40 transition-colors"
-                    />
-                  </div>
-
-                  {/* Reminder offset selector */}
-                  <div className="flex items-center gap-2 pt-1.5 border-t border-slate-700/30">
-                    <Bell className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                    <span className="text-xs text-slate-400 flex-1">{t('modal.reminderBefore')}</span>
-                    <select
-                      value={form.exitReminderMinutes}
-                      onChange={(e) => handleChange('exitReminderMinutes', e.target.value)}
-                      className="w-44 bg-slate-900/80 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/40 transition-colors"
-                    >
-                      <option value="5">5 {t('modal.minutes')}</option>
-                      <option value="10">10 {t('modal.minutes')}</option>
-                      <option value="15">{t('modal.presetExit15m')}</option>
-                      <option value="30">{t('modal.preset30m')}</option>
-                      <option value="45">{t('modal.preset45m')}</option>
-                      <option value="60">{t('modal.preset1h')}</option>
-                      <option value="120">{t('modal.preset2h')}</option>
-                      <option value="180">{t('modal.preset3h')}</option>
-                      <option value="custom">{t('modal.customMinutes')}</option>
-                    </select>
-                  </div>
-
-                  {/* Custom minutes input if selected */}
-                  {form.exitReminderMinutes === 'custom' && (
-                    <div className="flex items-center gap-2 pl-5 rtl:pr-5 rtl:pl-0 pt-1">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="15"
-                        value={form.customExitMinutes}
-                        onChange={(e) => handleChange('customExitMinutes', e.target.value)}
-                        className="w-24 bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-amber-500/40"
-                      />
-                      <span className="text-[11px] text-slate-400">{t('modal.minutes')}</span>
-                    </div>
-                  )}
-                </div>
-                {errors.checkOut && <p className="text-xs text-rose-400">{errors.checkOut}</p>}
+                {errors.checkOut && <p className="text-xs text-rose-400 font-medium">{errors.checkOut}</p>}
               </div>
             </div>
 
@@ -463,8 +328,70 @@ export function AddBookingModal({
             )}
           </div>
 
+          {/* Time pickers & Reminder offsets section */}
+          <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 space-y-4">
+            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              {isArabic ? 'أوقات الدخول والخروج والتنبيهات المجدولة' : 'Check-in/out Times & Scheduled Reminders'}
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Check-in Time & Offset */}
+              <div className="space-y-3">
+                <InputWrapper label={t('modal.checkInTime')} icon={Clock}>
+                  <input
+                    type="time"
+                    value={form.checkInTime}
+                    onChange={(e) => handleChange('checkInTime', e.target.value)}
+                    className={inputClass(false)}
+                  />
+                </InputWrapper>
+
+                <InputWrapper label={t('modal.entryReminder')} icon={Bell}>
+                  <select
+                    value={form.entryReminderMinutes}
+                    onChange={(e) => handleChange('entryReminderMinutes', Number(e.target.value))}
+                    className={inputClass(false)}
+                  >
+                    {ENTRY_REMINDER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {isArabic ? opt.labelAr : opt.labelEn}
+                      </option>
+                    ))}
+                  </select>
+                </InputWrapper>
+              </div>
+
+              {/* Check-out Time & Offset */}
+              <div className="space-y-3">
+                <InputWrapper label={t('modal.checkOutTime')} icon={Clock}>
+                  <input
+                    type="time"
+                    value={form.checkOutTime}
+                    onChange={(e) => handleChange('checkOutTime', e.target.value)}
+                    className={inputClass(false)}
+                  />
+                </InputWrapper>
+
+                <InputWrapper label={t('modal.exitReminder')} icon={Bell}>
+                  <select
+                    value={form.exitReminderMinutes}
+                    onChange={(e) => handleChange('exitReminderMinutes', Number(e.target.value))}
+                    className={inputClass(false)}
+                  >
+                    {EXIT_REMINDER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {isArabic ? opt.labelAr : opt.labelEn}
+                      </option>
+                    ))}
+                  </select>
+                </InputWrapper>
+              </div>
+            </div>
+          </div>
+
           {/* Source + Amount row */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <InputWrapper label={t('modal.bookingSource')} icon={FileText}>
               <select
                 value={form.source}
@@ -501,12 +428,12 @@ export function AddBookingModal({
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-800/80">
             <Button type="button" variant="ghost" size="md" onClick={onClose}>
-              {isEditMode ? t('modal.close') : t('modal.cancel')}
+              {t('modal.cancel')}
             </Button>
             <Button type="submit" variant="primary" size="md" loading={submitting}>
               {submitting
                 ? t('modal.saving')
-                : isEditMode
+                : isEdit
                 ? t('modal.saveChanges')
                 : t('modal.createBooking')}
             </Button>
@@ -516,3 +443,4 @@ export function AddBookingModal({
     </div>
   );
 }
+

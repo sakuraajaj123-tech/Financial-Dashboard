@@ -1,6 +1,6 @@
 // Sidebar.jsx — App navigation sidebar
 
-import { Building2, LayoutDashboard, BarChart3, Webhook, Bot, X } from 'lucide-react';
+import { Building2, LayoutDashboard, BarChart3, Webhook, Bot, Bell, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 
@@ -11,6 +11,7 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
   const navItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard'), id: 'dashboard' },
     { icon: BarChart3, label: t('nav.analytics'), id: 'analytics' },
+    { icon: Bell, label: t('nav.reminders'), id: 'reminders' },
     { icon: Webhook, label: t('nav.webhookInspector'), id: 'webhook-inspector' },
     { icon: Bot, label: t('nav.botSettings'), id: 'bot-settings' },
   ];

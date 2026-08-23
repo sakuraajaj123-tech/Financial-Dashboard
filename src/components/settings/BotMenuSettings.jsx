@@ -2,7 +2,6 @@
 // Dynamic WhatsApp Auto-Reply Menu configuration with Nested-Box UI (Interactive Buttons & Lists)
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AdminPhonesSettings } from './AdminPhonesSettings';
 import {
   Bot,
   Plus,
@@ -648,9 +647,6 @@ export function BotMenuSettings() {
 
   return (
     <div className="space-y-6 pb-24 max-w-5xl mx-auto animate-fade-in">
-      {/* ── Admin Reminder Phone Numbers ──────────────────────────────────────── */}
-      <AdminPhonesSettings />
-
       {/* Top Banner & Action Bar */}
       <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/20 to-slate-900/60 border border-indigo-500/20 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden backdrop-blur-md">
         <div className="flex items-center justify-between gap-4 flex-wrap">

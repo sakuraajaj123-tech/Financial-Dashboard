@@ -14,7 +14,7 @@ export function UnitDetailView({
   onBack,
   onAddBooking,
   onDeleteBooking,
-  onViewBooking,
+  onViewBookingDetails,
 }) {
   const { t } = useTranslation();
   const nextMonth = useMemo(() => addMonths(new Date(), 1), []);
@@ -60,7 +60,7 @@ export function UnitDetailView({
         <BookingHistoryTab
           unit={{ ...unit, bookings: unit.bookings || [] }}
           onDeleteBooking={onDeleteBooking}
-          onViewBooking={onViewBooking}
+          onViewDetails={onViewBookingDetails}
         />
       </div>
     </div>
