@@ -13,10 +13,8 @@ import { WebhookInspector } from './components/webhook/WebhookInspector';
 import { BotMenuSettings } from './components/settings/BotMenuSettings';
 import { AdminPhonesSettings } from './components/settings/AdminPhonesSettings';
 import { useUnits } from './hooks/useUnits';
-import { sendWhatsAppConfirmation, sendEntryReminder } from './api/whatsapp';
+import { sendWhatsAppConfirmation } from './api/whatsapp';
 import { simulateWebhookEvent } from './api/webhook';
-import { db } from './lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -89,41 +87,6 @@ export default function App() {
       await updateBooking(unitId, bookingId || editingBooking.id, bookingData);
     } else {
       await addBooking(unitId, bookingData);
-    }
-
-    // 🚀 Immediate WhatsApp message dispatch for live verification upon booking creation
-    const targetUnit = getUnit(unitId);
-    const unitNumber = String(targetUnit ? targetUnit.number : '1');
-
-    // 1. Send immediate entry_reminder to tenant phone if valid
-    const cleanTenant = String(bookingData.phone || '').replace(/[^0-9]/g, '');
-    if (cleanTenant.length >= 8) {
-      sendEntryReminder(cleanTenant, unitNumber)
-        .then((res) => {
-          console.log('[App] ✅ Immediate entry_reminder dispatched to tenant:', cleanTenant, res);
-          if (res?.messages?.[0]?.id) {
-            simulateWebhookEvent(res.messages[0].id, cleanTenant);
-          }
-        })
-        .catch((err) => console.error('[App] ❌ Failed to send immediate entry_reminder to tenant:', err));
-    }
-
-    // 2. Send immediate entry_reminder to all configured admin phones
-    try {
-      const snap = await getDoc(doc(db, 'settings', 'global_settings'));
-      if (snap.exists()) {
-        const adminPhones = snap.data().adminPhones || [];
-        for (const adminPhone of adminPhones) {
-          const cleanAdmin = String(adminPhone || '').replace(/[^0-9]/g, '');
-          if (cleanAdmin.length >= 8) {
-            sendEntryReminder(cleanAdmin, unitNumber)
-              .then((res) => console.log('[App] ✅ Immediate entry_reminder dispatched to admin:', cleanAdmin, res))
-              .catch((err) => console.error('[App] ❌ Failed to send immediate entry_reminder to admin:', err));
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[App] Could not query admin phones for immediate reminder dispatch:', err);
     }
   };
 
