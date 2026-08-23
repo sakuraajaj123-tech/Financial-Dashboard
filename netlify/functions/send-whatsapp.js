@@ -81,10 +81,133 @@ export async function handler(event, context) {
     const body = JSON.parse(event.body || '{}');
     const endpoint = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
 
-    let payload = null;
+    // ── Mode 0: Trigger scheduled reminders queue (Direct execution without 403 edge blocks) ──
+    if (body.mode === 'trigger_reminders') {
+      const db = getDb();
+      if (!db) {
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Firebase Admin credentials not configured on server' }),
+        };
+      }
 
+      const nowIso = new Date().toISOString();
+      const remindersRef = db.collection('pending_reminders');
+      const dueSnapshot = await remindersRef
+        .where('triggerTime', '<=', nowIso)
+        .limit(50)
+        .get();
+
+      if (dueSnapshot.empty) {
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'No pending reminders due at this time',
+            checkedAt: nowIso,
+            remindersProcessed: 0,
+            messagesSent: 0,
+          }),
+        };
+      }
+
+      const settingsDoc = await db.collection('settings').doc('global_settings').get();
+      let adminPhones = [];
+      if (settingsDoc.exists) {
+        const data = settingsDoc.data();
+        if (Array.isArray(data.adminPhones)) {
+          adminPhones = data.adminPhones.filter(Boolean);
+        }
+      }
+
+      let sentCount = 0;
+      let failedCount = 0;
+      const batch = db.batch();
+
+      for (const docSnap of dueSnapshot.docs) {
+        const reminder = docSnap.data();
+        const unitNumber = String(reminder.unitNumber || '1');
+        const templateName = reminder.template || (reminder.type === 'entry' ? 'entry_reminder' : 'reminder');
+
+        const recipientPhones = new Set();
+        adminPhones.forEach((p) => {
+          const clean = String(p || '').replace(/[^0-9]/g, '');
+          if (clean.length >= 8) recipientPhones.add(clean);
+        });
+
+        if (reminder.phone) {
+          const cleanTenant = String(reminder.phone).replace(/[^0-9]/g, '');
+          if (cleanTenant.length >= 8) recipientPhones.add(cleanTenant);
+        }
+
+        for (const cleanPhone of recipientPhones) {
+          const reminderPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: cleanPhone,
+            type: 'template',
+            template: {
+              name: templateName,
+              language: { code: 'ar' },
+              components: [
+                {
+                  type: 'body',
+                  parameters: [
+                    { type: 'text', text: unitNumber },
+                  ],
+                },
+              ],
+            },
+          };
+
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${ACCESS_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(reminderPayload),
+            });
+            const resData = await res.json();
+            if (res.ok) {
+              sentCount++;
+              const msgId = resData?.messages?.[0]?.id || '';
+              const textLabel = reminder.type === 'entry'
+                ? `[تذكير دخول تلقائي: وحدة ${unitNumber}]`
+                : `[تذكير خروج تلقائي: وحدة ${unitNumber}]`;
+              await saveMessage(cleanPhone, { sender: 'admin', text: textLabel, messageId: msgId });
+            } else {
+              failedCount++;
+              console.error(`[Trigger Reminders] Failed to send to ${cleanPhone}:`, resData);
+            }
+          } catch (netErr) {
+            failedCount++;
+            console.error(`[Trigger Reminders] Error sending to ${cleanPhone}:`, netErr.message);
+          }
+        }
+
+        batch.delete(docSnap.ref);
+      }
+
+      await batch.commit();
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Reminders processed successfully',
+          checkedAt: nowIso,
+          remindersProcessed: dueSnapshot.docs.length,
+          messagesSent: sentCount,
+          messagesFailed: failedCount,
+          adminRecipients: adminPhones.length,
+        }),
+      };
+    }
     // ── Mode 1: Free-text reply (within 24h window) ─────────────────────────
-    if (body.mode === 'freetext') {
+    else if (body.mode === 'freetext') {
       const { to, text } = body;
       const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
