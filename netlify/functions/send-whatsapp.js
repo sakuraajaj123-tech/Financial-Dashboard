@@ -1,7 +1,6 @@
 // netlify/functions/send-whatsapp.js
 // Netlify Serverless Function for securely sending WhatsApp Messages via Meta Cloud API
 // Supports: (1) Template-based booking confirmations, (2) Free-text replies within 24h window, (3) Hello World, (4) Terms
-// Test commit: Sync verification
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 
