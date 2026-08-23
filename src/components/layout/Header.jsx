@@ -5,9 +5,18 @@ import { Button } from '../shared/Button';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
-export function Header({ onAddBooking, onToggleSidebar, title, subtitle }) {
+export function Header({
+  onAddBooking,
+  onToggleSidebar,
+  title,
+  subtitle,
+  addLabel,
+  onAddAction,
+}) {
   const { t } = useTranslation();
   const today = format(new Date(), 'EEEE, MMMM d, yyyy');
+  const handleAdd = onAddAction || onAddBooking;
+  const label = addLabel || t('header.addBooking');
 
   return (
     <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-6 py-3.5">
@@ -54,16 +63,18 @@ export function Header({ onAddBooking, onToggleSidebar, title, subtitle }) {
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
           </button>
 
-          {/* Add Booking CTA */}
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Plus}
-            onClick={onAddBooking}
-            id="add-booking-btn"
-          >
-            <span className="hidden sm:inline">{t('header.addBooking')}</span>
-          </Button>
+          {/* Add Action CTA */}
+          {handleAdd && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={handleAdd}
+              id="header-action-btn"
+            >
+              <span className="hidden sm:inline">{label}</span>
+            </Button>
+          )}
         </div>
       </div>
     </header>

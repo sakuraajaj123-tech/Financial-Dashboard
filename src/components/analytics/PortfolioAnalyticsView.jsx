@@ -201,7 +201,6 @@ export function PortfolioAnalyticsView({
                 <th className="py-3 px-4">Bedrooms / Floor</th>
                 <th className="py-3 px-4">Total Bookings</th>
                 <th className="py-3 px-4 text-right rtl:text-left">Total Earnings</th>
-                {onSelectUnit && <th className="py-3 px-4 text-center">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-sm">
@@ -229,16 +228,6 @@ export function PortfolioAnalyticsView({
                     <td className="py-3.5 px-4 text-right rtl:text-left font-semibold text-emerald-400">
                       SAR {revenue.toLocaleString()}
                     </td>
-                    {onSelectUnit && (
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          type="button"
-                          className="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 group-hover:bg-indigo-600 group-hover:text-white transition-all"
-                        >
-                          {t('unit.details')}
-                        </button>
-                      </td>
-                    )}
                   </tr>
                 );
               })}

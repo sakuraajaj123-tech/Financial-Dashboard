@@ -8,11 +8,14 @@ import { Header } from './components/layout/Header';
 import { UnitCard } from './components/dashboard/UnitCard';
 import { UnitDetailView } from './components/unit/UnitDetailView';
 import { PortfolioAnalyticsView } from './components/analytics/PortfolioAnalyticsView';
+import { FinancialDashboard } from './components/finance/FinancialDashboard';
 import { AddBookingModal } from './components/modals/AddBookingModal';
+import { AddTransactionModal } from './components/modals/AddTransactionModal';
 import { WebhookInspector } from './components/webhook/WebhookInspector';
 import { BotMenuSettings } from './components/settings/BotMenuSettings';
 import { AdminPhonesSettings } from './components/settings/AdminPhonesSettings';
 import { useUnits } from './hooks/useUnits';
+import { useFinance } from './hooks/useFinance';
 import { sendWhatsAppConfirmation } from './api/whatsapp';
 import { simulateWebhookEvent } from './api/webhook';
 
@@ -31,9 +34,12 @@ export default function App() {
     getPortfolioSourceSplit,
   } = useUnits();
 
+  const financeData = useFinance();
+
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedUnitId, setSelectedUnitId] = useState(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [bookingUnitPreselect, setBookingUnitPreselect] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
 
@@ -90,6 +96,10 @@ export default function App() {
     }
   };
 
+  const handleSaveTransaction = async (transactionData) => {
+    await financeData.addTransaction(transactionData);
+  };
+
   const handleQuickWhatsApp = async (booking, unitNumber) => {
     try {
       const res = await sendWhatsAppConfirmation(booking, unitNumber);
@@ -123,7 +133,12 @@ export default function App() {
       <main className="flex-1 ltr:md:ml-64 rtl:md:mr-64 md:ms-64 flex flex-col min-h-screen overflow-hidden w-full">
         <Header
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-          onAddBooking={() => handleOpenBookingModal()}
+          addLabel={activeView === 'finance' ? t('header.addTransaction') : t('header.addBooking')}
+          onAddAction={
+            activeView === 'finance'
+              ? () => setIsTransactionModalOpen(true)
+              : () => handleOpenBookingModal()
+          }
           title={
             activeView === 'reminders'
               ? t('header.remindersTitle')
@@ -133,6 +148,8 @@ export default function App() {
               ? t('header.webhookTitle')
               : activeView === 'analytics'
               ? t('header.analyticsTitle')
+              : activeView === 'finance'
+              ? t('header.financialTitle')
               : selectedUnit
               ? `${t('unit.unit')} ${selectedUnit.number}`
               : t('header.dashboardTitle')
@@ -146,6 +163,8 @@ export default function App() {
               ? t('header.webhookSubtitle')
               : activeView === 'analytics'
               ? t('header.analyticsSubtitle')
+              : activeView === 'finance'
+              ? t('header.financialSubtitle')
               : selectedUnit
               ? `${selectedUnit.bedrooms} ${t('unitDetail.bedrooms')} • ${t('unit.floor')} ${selectedUnit.floor}`
               : t('header.dashboardSubtitle')
@@ -159,6 +178,11 @@ export default function App() {
             <BotMenuSettings />
           ) : activeView === 'webhook-inspector' ? (
             <WebhookInspector />
+          ) : activeView === 'finance' ? (
+            <FinancialDashboard
+              financeData={financeData}
+              onOpenAddModal={() => setIsTransactionModalOpen(true)}
+            />
           ) : loading ? (
             <div className="flex-1 flex items-center justify-center min-h-[60vh]">
               <div className="flex flex-col items-center gap-4 animate-fade-in">
@@ -227,6 +251,14 @@ export default function App() {
             setEditingBooking(null);
           }}
           onSubmit={handleSaveBooking}
+        />
+      )}
+
+      {isTransactionModalOpen && (
+        <AddTransactionModal
+          isOpen={isTransactionModalOpen}
+          onClose={() => setIsTransactionModalOpen(false)}
+          onSubmit={handleSaveTransaction}
         />
       )}
     </div>
