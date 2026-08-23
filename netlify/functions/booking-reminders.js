@@ -133,8 +133,23 @@ async function processRemindersCore(event) {
 
       console.log(`[Reminders Cron] 🚀 Sending ${templateName} for Unit ${unitNumber} (Booking: ${reminder.bookingId})`);
 
-      for (const phone of adminPhones) {
-        const cleanPhone = phone.replace('+', '').trim();
+      // Build recipient list: all admin phones + booking phone (if valid)
+      const recipientPhones = new Set();
+      adminPhones.forEach((p) => {
+        const clean = String(p || '').replace(/[^0-9]/g, '');
+        if (clean.length >= 8) recipientPhones.add(clean);
+      });
+
+      if (reminder.phone) {
+        const cleanTenant = String(reminder.phone).replace(/[^0-9]/g, '');
+        if (cleanTenant.length >= 8) recipientPhones.add(cleanTenant);
+      }
+
+      if (recipientPhones.size === 0) {
+        console.warn(`[Reminders Cron] ⚠️ No valid recipients for reminder ${reminder.id}`);
+      }
+
+      for (const cleanPhone of recipientPhones) {
         const payload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',

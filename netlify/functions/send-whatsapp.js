@@ -86,8 +86,9 @@ export async function handler(event, context) {
     // ── Mode 1: Free-text reply (within 24h window) ─────────────────────────
     if (body.mode === 'freetext') {
       const { to, text } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
-      if (!to || !text) {
+      if (!cleanTo || !text) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing "to" phone number or "text" message body' }),
@@ -97,7 +98,7 @@ export async function handler(event, context) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to,
+        to: cleanTo,
         type: 'text',
         text: { body: text },
       };
@@ -105,8 +106,9 @@ export async function handler(event, context) {
     // ── Mode 2: Template-based booking confirmation ──────────────────────────
     else if (!body.mode || body.mode === 'booking_confirmation') {
       const { booking, unitNumber } = body;
+      const cleanTo = String(booking?.phone || '').replace(/[^0-9]/g, '');
 
-      if (!booking || !booking.phone) {
+      if (!booking || !cleanTo) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing booking or phone number' }),
@@ -116,7 +118,7 @@ export async function handler(event, context) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to: booking.phone,
+        to: cleanTo,
         type: 'template',
         template: {
           name: 'booking_confirmation',
@@ -139,8 +141,9 @@ export async function handler(event, context) {
     // ── Mode 3: Hello World Template ──────────────────────────
     else if (body.mode === 'hello_world') {
       const { to } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
-      if (!to) {
+      if (!cleanTo) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing "to" phone number' }),
@@ -150,7 +153,7 @@ export async function handler(event, context) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to,
+        to: cleanTo,
         type: 'template',
         template: {
           name: 'hello_world',
@@ -161,8 +164,9 @@ export async function handler(event, context) {
     // ── Mode 4: Send "terms" template ──────────────────────────────────────────
     else if (body.mode === 'send_terms') {
       const { to, variableValue } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
-      if (!to || !variableValue) {
+      if (!cleanTo || !variableValue) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing "to" or "variableValue"' }),
@@ -171,7 +175,7 @@ export async function handler(event, context) {
 
       payload = {
         messaging_product: 'whatsapp',
-        to,
+        to: cleanTo,
         type: 'template',
         template: {
           name: 'terms',
@@ -193,8 +197,9 @@ export async function handler(event, context) {
     // ── Mode 5: Send "entry_reminder" (Check-in Reminder) ──────────────────────
     else if (body.mode === 'entry_reminder') {
       const { to, unitNumber } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
-      if (!to) {
+      if (!cleanTo) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing "to" phone number' }),
@@ -204,7 +209,7 @@ export async function handler(event, context) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to,
+        to: cleanTo,
         type: 'template',
         template: {
           name: 'entry_reminder',
@@ -226,8 +231,9 @@ export async function handler(event, context) {
     // ── Mode 6: Send "reminder" (Check-out Reminder) ──────────────────────────
     else if (body.mode === 'reminder' || body.mode === 'reminder_test') {
       const { to, unitNumber } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
 
-      if (!to) {
+      if (!cleanTo) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Missing "to" phone number' }),
@@ -237,7 +243,7 @@ export async function handler(event, context) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to,
+        to: cleanTo,
         type: 'template',
         template: {
           name: 'reminder',
