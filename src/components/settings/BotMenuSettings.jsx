@@ -29,7 +29,7 @@ const LEVEL_STYLES = [
     badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
     accent: 'text-indigo-400',
     dot: 'bg-indigo-400',
-    name: 'المستوى الرئيسي (Level 1)',
+    nameKey: 'botSettings.level1Name',
   },
   {
     bg: 'bg-slate-950/80',
@@ -37,7 +37,7 @@ const LEVEL_STYLES = [
     badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     accent: 'text-emerald-400',
     dot: 'bg-emerald-400',
-    name: 'قائمة فرعية (Level 2)',
+    nameKey: 'botSettings.level2Name',
   },
   {
     bg: 'bg-[#111827]/90',
@@ -45,7 +45,7 @@ const LEVEL_STYLES = [
     badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     accent: 'text-amber-400',
     dot: 'bg-amber-400',
-    name: 'مستوى فرعي متقدم (Level 3)',
+    nameKey: 'botSettings.level3Name',
   },
   {
     bg: 'bg-[#0f172a]/95',
@@ -53,7 +53,7 @@ const LEVEL_STYLES = [
     badge: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
     accent: 'text-violet-400',
     dot: 'bg-violet-400',
-    name: 'مستوى فرعي (Level 4+)',
+    nameKey: 'botSettings.level4Name',
   },
 ];
 
@@ -142,7 +142,7 @@ function MenuOptionBox({
         <div className="flex items-center gap-2.5">
           <span className={`w-2.5 h-2.5 rounded-full ${style.dot} animate-pulse`} />
           <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${style.badge}`}>
-            #{path} • {level === 0 ? 'خيار رئيسي' : `خيار فرعي - مستوى ${level + 1}`}
+            #{path} • {level === 0 ? t('botSettings.mainOptionBadge') : t('botSettings.subOptionBadge', { level: level + 1 })}
           </span>
           {option.title && (
             <span className="text-xs font-semibold text-slate-300 truncate max-w-[200px]">
@@ -156,17 +156,17 @@ function MenuOptionBox({
             type="button"
             onClick={() => onAddSubOption(option.id)}
             className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-            title="إضافة خيار فرعي داخل هذا الخيار"
+            title={t('botSettings.addSubOptionTitle')}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>إضافة خيار فرعي</span>
+            <span>{t('botSettings.addSubOption')}</span>
           </button>
 
           <button
             type="button"
             onClick={() => onDelete(option.id)}
             className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold transition-all active:scale-95"
-            title="حذف هذا الخيار"
+            title={t('botSettings.deleteOptionTitle')}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -179,18 +179,18 @@ function MenuOptionBox({
         <div className="md:col-span-12 space-y-1.5">
           <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
             <span className="flex items-center gap-1">
-              <span>عنوان الزر / الخيار (Option Title)</span>
+              <span>{t('botSettings.optionTitleLabel')}</span>
               <span className="text-rose-400">*</span>
             </span>
             <span className="text-[11px] text-slate-400 font-normal">
-              النص الظاهر على الزر التفاعلي أو عنصر القائمة
+              {t('botSettings.optionTitleHint')}
             </span>
           </label>
           <input
             type="text"
             value={option.title || ''}
             onChange={(e) => handleChange('title', e.target.value)}
-            placeholder="مثال: أسعار الشقق والاستديوهات"
+            placeholder={t('botSettings.optionTitlePlaceholder')}
             className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-medium"
             dir="auto"
           />
@@ -200,34 +200,34 @@ function MenuOptionBox({
         <div className="md:col-span-12 space-y-1.5">
           <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
             <span className="flex items-center gap-1">
-              <span>نص رد البوت (Bot Reply Text)</span>
+              <span>{t('botSettings.botReplyLabel')}</span>
               <span className="text-rose-400">*</span>
             </span>
             <span className="text-[11px] text-slate-400 font-normal">
-              يدعم الإيموجي وتنسيقات واتساب والأسطر المتعددة
+              {t('botSettings.botReplyHint')}
             </span>
           </label>
           <textarea
             rows={3}
             value={option.responseText || ''}
             onChange={(e) => handleChange('responseText', e.target.value)}
-            placeholder="اكتب هنا الرسالة التي سيرسلها البوت للعميل عند النقر على هذا الخيار..."
+            placeholder={t('botSettings.botReplyPlaceholder')}
             className="w-full bg-slate-950 border border-slate-700/80 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all resize-y min-h-[80px]"
             dir="auto"
           />
         </div>
       </div>
 
-      {/* Nested Sub-options Container (Indented with distinct style) */}
+      {/* Nested Sub-options Container */}
       {hasChildren && (
         <div className="mt-4 pt-4 border-t border-slate-700/50 space-y-3 ps-2 sm:ps-5 border-s-2 border-s-emerald-500/40">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
               <CornerDownRight className="w-3.5 h-3.5 rtl:-scale-x-100" />
-              <span>الخيارات الفرعية التابعة ({subOptions.length})</span>
+              <span>{t('botSettings.subOptionsHeader', { count: subOptions.length })}</span>
             </h4>
             <span className="text-[10px] text-slate-400">
-              عند اختيار "{option.title || path}"، سيتم عرض هذه القائمة التفاعلية
+              {t('botSettings.subOptionsHint', { title: option.title || path })}
             </span>
           </div>
 
@@ -252,6 +252,7 @@ function MenuOptionBox({
 
 // ── Live Interactive Simulator Modal/Drawer ──────────────────────────────────
 function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [currentMenuState, setCurrentMenuState] = useState(null); // null (root) or node object
@@ -264,13 +265,13 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
         {
           id: 'welcome',
           from: 'bot',
-          text: welcomeMessage || 'مرحباً بك في شققنا المفروشة 🏨',
+          text: welcomeMessage || t('botSettings.simulator.welcomeDefault'),
           options: menuOptions,
           isSub: false,
         },
       ]);
     }
-  }, [isOpen, welcomeMessage, menuOptions]);
+  }, [isOpen, welcomeMessage, menuOptions, t]);
 
   const handleSelectOption = (opt) => {
     if (!opt) return;
@@ -279,9 +280,10 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
     const userMsg = {
       id: Date.now().toString(),
       from: 'user',
-      text: opt.title || 'خيار',
+      text: opt.title || t('botSettings.simulator.untitledOption'),
     };
 
+    const hasSub = opt.subOptions && opt.subOptions.length > 0;
     const isCS = opt.id === 'opt_support' || opt.id === 'btn_support' || (opt.title && opt.title.includes('خدمة العملاء'));
     let botMsg;
     if (hasSub) {
@@ -289,7 +291,7 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
       botMsg = {
         id: (Date.now() + 1).toString(),
         from: 'bot',
-        text: opt.responseText || 'يرجى اختيار أحد الخيارات التالية:',
+        text: opt.responseText || t('botSettings.simulator.chooseBelow'),
         options: opt.subOptions,
         isSub: true,
       };
@@ -297,7 +299,7 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
       botMsg = {
         id: (Date.now() + 1).toString(),
         from: 'bot',
-        text: opt.responseText || 'تمت معالجة طلبك بنجاح.',
+        text: opt.responseText || t('botSettings.simulator.processedSuccess'),
         options: [],
         showReturnButton: true,
         isCustomerService: isCS,
@@ -312,12 +314,12 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
     const userMsg = {
       id: Date.now().toString(),
       from: 'user',
-      text: '🏠 القائمة الرئيسية',
+      text: t('botSettings.simulator.mainMenuBtn'),
     };
     const botMsg = {
       id: (Date.now() + 1).toString(),
       from: 'bot',
-      text: welcomeMessage || 'مرحباً بك في شققنا المفروشة 🏨',
+      text: welcomeMessage || t('botSettings.simulator.welcomeDefault'),
       options: menuOptions,
       isSub: false,
     };
@@ -328,12 +330,12 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
     const userMsg = {
       id: Date.now().toString(),
       from: 'user',
-      text: 'التواصل مع خدمة العملاء',
+      text: t('botSettings.simulator.defaultCustomerServiceText'),
     };
     const botMsg = {
       id: (Date.now() + 1).toString(),
       from: 'bot',
-      text: 'سيقوم أحد ممثلي خدمة العملاء بالتواصل معك مباشرة في أقرب وقت ممكن! 👨‍💼📞',
+      text: t('botSettings.simulator.supportReply'),
       options: [],
       showReturnButton: true,
       isCustomerService: true,
@@ -348,8 +350,8 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
     setInputText('');
 
     const norm = text.toLowerCase();
-    const isSupport = ['خدمة العملاء', 'التواصل مع خدمة العملاء', 'الدعم', 'support'].some((s) => norm.includes(s));
-    const isBack = ['0', 'رجوع', 'back', 'menu', 'قائمة', 'start', 'main', 'رئيسية', 'القائمة الرئيسية', 'العودة للقائمة الرئيسية', '🏠 القائمة الرئيسية'].includes(norm);
+    const isSupport = ['خدمة العملاء', 'التواصل مع خدمة العملاء', 'الدعم', 'support', 'customer service'].some((s) => norm.includes(s));
+    const isBack = ['0', 'رجوع', 'back', 'menu', 'قائمة', 'start', 'main', 'رئيسية', 'القائمة الرئيسية', 'العودة للقائمة الرئيسية', '🏠 القائمة الرئيسية', 'home'].includes(norm);
 
     if (isSupport) {
       handleCustomerSupport();
@@ -375,7 +377,7 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
       const botMsg = {
         id: (Date.now() + 1).toString(),
         from: 'bot',
-        text: welcomeMessage || 'مرحباً بك في شققنا المفروشة 🏨',
+        text: welcomeMessage || t('botSettings.simulator.welcomeDefault'),
         options: menuOptions,
         isSub: false,
       };
@@ -395,8 +397,8 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-sm">محاكي الأزرار التفاعلية (Live Test)</h3>
-              <p className="text-xs text-emerald-400">أزرار وقوائم تفاعلية مباشرة</p>
+              <h3 className="font-bold text-white text-sm">{t('botSettings.simulator.title')}</h3>
+              <p className="text-xs text-emerald-400">{t('botSettings.simulator.subtitle')}</p>
             </div>
           </div>
           <button
@@ -438,7 +440,7 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
                           dir="auto"
                         >
                           <span>🔘</span>
-                          <span>{opt.title || 'خيار بدون عنوان'}</span>
+                          <span>{opt.title || t('botSettings.simulator.untitledOption')}</span>
                         </button>
                       ))}
                     </div>
@@ -452,14 +454,14 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
                           onClick={handleCustomerSupport}
                           className="w-full text-center py-2 px-3 bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 hover:text-white text-xs font-semibold rounded-xl border border-indigo-500/30 transition-all flex items-center justify-center gap-1.5"
                         >
-                          <span>👨‍💼 التواصل مع خدمة العملاء</span>
+                          <span>{t('botSettings.simulator.customerServiceBtn')}</span>
                         </button>
                       )}
                       <button
                         onClick={handleResetToMain}
                         className="w-full text-center py-2 px-3 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700/60 transition-all flex items-center justify-center gap-1.5"
                       >
-                        <span>🏠 العودة للقائمة الرئيسية</span>
+                        <span>{t('botSettings.simulator.mainMenuBtn')}</span>
                       </button>
                     </div>
                   )}
@@ -475,7 +477,7 @@ function BotMenuSimulator({ welcomeMessage, menuOptions, isOpen, onClose }) {
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="اكتب رسالة أو اضغط الأزرار..."
+            placeholder={t('botSettings.simulator.inputPlaceholder')}
             className="flex-1 bg-[#2a3942] border-0 rounded-2xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             dir="auto"
           />
@@ -528,11 +530,11 @@ export function BotMenuSettings() {
       setHasUnsavedChanges(false);
     } catch (err) {
       console.error('Failed to load bot menu settings:', err);
-      setErrorMessage(err.message || 'فشل تحميل إعدادات القائمة');
+      setErrorMessage(err.message || t('botSettings.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadSettings();
@@ -545,10 +547,10 @@ export function BotMenuSettings() {
   }, []);
 
   const handleDeleteOption = useCallback((id) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا الخيار وجميع الخيارات الفرعية التابعة له؟')) return;
+    if (!window.confirm(t('botSettings.deleteConfirm'))) return;
     setMenuOptions((prev) => deleteNodeFromTree(prev, id));
     setHasUnsavedChanges(true);
-  }, []);
+  }, [t]);
 
   const handleAddSubOption = useCallback((parentId) => {
     const newNode = {
@@ -582,10 +584,10 @@ export function BotMenuSettings() {
     const validateNodes = (nodes) => {
       for (const node of nodes) {
         if (!node.title?.trim()) {
-          return 'يرجى ملء عنوان الخيار (Option Title) لجميع الخيارات والأزرار.';
+          return t('botSettings.valTitleRequired');
         }
         if (!node.responseText?.trim()) {
-          return 'يرجى ملء نص الرد (Bot Reply Text) لجميع الخيارات.';
+          return t('botSettings.valReplyRequired');
         }
         if (node.subOptions && node.subOptions.length > 0) {
           const subErr = validateNodes(node.subOptions);
@@ -613,7 +615,7 @@ export function BotMenuSettings() {
     } catch (err) {
       console.error('Failed to save bot settings:', err);
       setSaveStatus('error');
-      setErrorMessage(err.message || 'فشل حفظ الإعدادات في قاعدة البيانات');
+      setErrorMessage(err.message || t('botSettings.saveError'));
     }
   };
 
@@ -640,7 +642,7 @@ export function BotMenuSettings() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
         <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-        <p className="text-sm text-slate-400">جارٍ تحميل إعدادات قائمة الرد التلقائي من Firestore...</p>
+        <p className="text-sm text-slate-400">{t('botSettings.loadingText')}</p>
       </div>
     );
   }
@@ -656,13 +658,13 @@ export function BotMenuSettings() {
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                <span>إعدادات قائمة الرد التلقائي (Interactive Menu)</span>
+                <span>{t('botSettings.title')}</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
-                  Buttons & Lists
+                  {t('botSettings.buttonsAndLists')}
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                تخصيص الأزرار والقوائم التفاعلية الهرمية والردود الآلية عبر الواتساب بدون أرقام تفعيل.
+                {t('botSettings.subtitle')}
               </p>
             </div>
           </div>
@@ -673,10 +675,10 @@ export function BotMenuSettings() {
               type="button"
               onClick={() => setIsSimulatorOpen(true)}
               className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-sm"
-              title="اختبار تجربة الأزرار والقوائم التفاعلية مباشرة"
+              title={t('botSettings.liveTestTitle')}
             >
               <Eye className="w-4 h-4 text-emerald-400" />
-              <span>معاينة وتجربة الأزرار (Live Test)</span>
+              <span>{t('botSettings.liveTestBtn')}</span>
             </button>
 
             <button
@@ -684,7 +686,7 @@ export function BotMenuSettings() {
               onClick={loadSettings}
               disabled={loading || saveStatus === 'saving'}
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-all active:scale-95 disabled:opacity-50"
-              title="إعادة تحميل من قاعدة البيانات"
+              title={t('botSettings.reloadBtn')}
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -695,16 +697,16 @@ export function BotMenuSettings() {
         <div className="mt-4 pt-4 border-t border-slate-700/40 flex items-center gap-4 text-xs text-slate-400 flex-wrap font-mono">
           <div className="flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-indigo-400" />
-            <span>إجمالي الخيارات: <strong className="text-white">{countStats.totalOptions}</strong></span>
+            <span>{t('botSettings.totalOptions')}: <strong className="text-white">{countStats.totalOptions}</strong></span>
           </div>
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>أقصى عمق للقوائم: <strong className="text-white">{countStats.maxDepth} مستويات</strong></span>
+            <span>{t('botSettings.maxDepth')}: <strong className="text-white">{t('botSettings.levelsCount', { count: countStats.maxDepth })}</strong></span>
           </div>
           {hasUnsavedChanges && (
             <div className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
               <AlertCircle className="w-3.5 h-3.5" />
-              <span>توجد تعديلات غير محفوظة!</span>
+              <span>{t('botSettings.unsavedChanges')}</span>
             </div>
           )}
         </div>
@@ -722,13 +724,13 @@ export function BotMenuSettings() {
       <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <h3 className="text-base font-bold text-white flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-indigo-400" />
-          <span>رسالة الترحيب العامة الأساسية (Welcome Message)</span>
+          <span>{t('botSettings.welcomeTitle')}</span>
         </h3>
 
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>نص رسالة الترحيب الأولى (Welcome Message)</span>
-            <span className="text-[11px] text-slate-500">الرسالة التلقائية التي تظهر دائماً مع الأزرار الرئيسية</span>
+            <span>{t('botSettings.welcomeLabel')}</span>
+            <span className="text-[11px] text-slate-500">{t('botSettings.welcomeHint')}</span>
           </label>
           <textarea
             rows={3}
@@ -737,7 +739,7 @@ export function BotMenuSettings() {
               setWelcomeMessage(e.target.value);
               setHasUnsavedChanges(true);
             }}
-            placeholder="مثال: مرحباً بك في شققنا المفروشة 🏨... يسعدنا خدمتكم! يرجى اختيار الخدمة المطلوبة من القائمة أدناه:"
+            placeholder={t('botSettings.welcomePlaceholder')}
             className="w-full bg-slate-950 border border-slate-700/80 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
             dir="auto"
           />
@@ -749,24 +751,24 @@ export function BotMenuSettings() {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <Layers className="w-4 h-4 text-emerald-400" />
-            <span>هيكل الأزرار والقوائم التفاعلية (Menu Hierarchy)</span>
+            <span>{t('botSettings.menuHierarchy')}</span>
           </h3>
           <span className="text-xs text-slate-400 font-mono">
-            {menuOptions.length} خيارات رئيسية
+            {t('botSettings.mainOptionsCount', { count: menuOptions.length })}
           </span>
         </div>
 
         {menuOptions.length === 0 ? (
           <div className="p-8 text-center bg-slate-900/40 border border-dashed border-slate-800 rounded-3xl space-y-3">
             <Bot className="w-10 h-10 text-slate-600 mx-auto" />
-            <p className="text-sm text-slate-400">لا توجد خيارات في القائمة حالياً.</p>
+            <p className="text-sm text-slate-400">{t('botSettings.noOptions')}</p>
             <button
               type="button"
               onClick={handleAddMainOption}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة أول خيار رئيسي</span>
+              <span>{t('botSettings.addFirstMainOption')}</span>
             </button>
           </div>
         ) : (
@@ -794,7 +796,7 @@ export function BotMenuSettings() {
           <div className="w-7 h-7 rounded-lg bg-indigo-600/30 group-hover:bg-indigo-600 flex items-center justify-center text-indigo-300 group-hover:text-white transition-colors">
             <Plus className="w-4 h-4" />
           </div>
-          <span>إضافة خيار رئيسي جديد (Add Main Option)</span>
+          <span>{t('botSettings.addMainOption')}</span>
         </button>
       </div>
 
@@ -804,7 +806,7 @@ export function BotMenuSettings() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs text-slate-300 font-medium">
-              الوجهة: <strong className="text-white font-mono">Firestore (settings/bot_menu)</strong>
+              {t('botSettings.destinationInfo')}
             </span>
           </div>
 
@@ -812,13 +814,13 @@ export function BotMenuSettings() {
             {saveStatus === 'saved' && (
               <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5 animate-fade-in">
                 <Check className="w-4 h-4" />
-                <span>تم حفظ الإعدادات بنجاح!</span>
+                <span>{t('botSettings.savedSuccess')}</span>
               </span>
             )}
             {saveStatus === 'error' && (
               <span className="text-xs text-rose-400 font-semibold flex items-center gap-1.5 animate-fade-in">
                 <AlertCircle className="w-4 h-4" />
-                <span>فشل الحفظ</span>
+                <span>{t('botSettings.saveError')}</span>
               </span>
             )}
 
@@ -831,12 +833,12 @@ export function BotMenuSettings() {
               {saveStatus === 'saving' ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جارٍ الحفظ...</span>
+                  <span>{t('botSettings.saving')}</span>
                 </>
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>حفظ التغييرات (Save Settings)</span>
+                  <span>{t('botSettings.saveChangesBtn')}</span>
                 </>
               )}
             </button>

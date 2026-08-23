@@ -433,7 +433,7 @@ export function AddBookingModal({
           <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 space-y-4">
             <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              {isArabic ? 'أوقات الدخول والخروج والتنبيهات المجدولة' : 'Check-in/out Times & Scheduled Reminders'}
+              {t('modal.remindersSectionTitle')}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

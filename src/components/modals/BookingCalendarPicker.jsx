@@ -16,12 +16,10 @@ import {
   isToday,
   isWithinInterval,
   parseISO,
-  isAfter,
   isBefore,
   startOfDay,
 } from 'date-fns';
-
-const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+import { useTranslation } from 'react-i18next';
 
 /**
  * BookingCalendarPicker
@@ -42,6 +40,9 @@ export function BookingCalendarPicker({
   label,
   selectedRange = {},
 }) {
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+
   const today = startOfDay(new Date());
   const initialMonth = (() => {
     if (value) {
@@ -104,6 +105,17 @@ export function BookingCalendarPicker({
     onChange(format(day, 'yyyy-MM-dd'));
   }
 
+  const monthLabel = useMemo(() => {
+    return new Intl.DateTimeFormat(isArabic ? 'ar-SA' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    }).format(viewMonth);
+  }, [viewMonth, isArabic]);
+
+  const dayHeaders = isArabic
+    ? ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت']
+    : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
   return (
     <div className="rounded-xl bg-slate-800/60 border border-slate-700/50 p-3 space-y-2 select-none">
       {/* Month navigation */}
@@ -113,23 +125,23 @@ export function BookingCalendarPicker({
           onClick={() => setViewMonth((m) => subMonths(m, 1))}
           className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
         </button>
         <span className="text-xs font-semibold text-slate-300">
-          {format(viewMonth, 'MMMM yyyy')}
+          {monthLabel}
         </span>
         <button
           type="button"
           onClick={() => setViewMonth((m) => addMonths(m, 1))}
           className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors"
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-4 h-4 rtl:rotate-180" />
         </button>
       </div>
 
       {/* Day headers */}
       <div className="grid grid-cols-7">
-        {DAY_NAMES.map((d) => (
+        {dayHeaders.map((d) => (
           <div key={d} className="text-center text-[10px] font-medium text-slate-500 py-0.5">
             {d}
           </div>
@@ -173,15 +185,15 @@ export function BookingCalendarPicker({
               onClick={() => inMonth && !booked && handleDayClick(day)}
               title={
                 booked
-                  ? `Booked — ${booking?.tenant}`
+                  ? `${t('calendar.booked')} — ${booking?.tenant}`
                   : disabled
-                  ? 'Unavailable'
+                  ? t('calendar.unavailable')
                   : inMonth
-                  ? 'Available'
+                  ? t('calendar.available')
                   : ''
               }
             >
-              {format(day, 'd')}
+              <span>{format(day, 'd')}</span>
               {booked && inMonth && (
                 <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-rose-400" />
               )}
@@ -194,15 +206,15 @@ export function BookingCalendarPicker({
       <div className="flex items-center gap-3 pt-1 border-t border-slate-700/40">
         <span className="flex items-center gap-1 text-[10px] text-slate-500">
           <span className="w-2 h-2 rounded-sm bg-rose-500/40 inline-block" />
-          Booked
+          {t('calendar.booked')}
         </span>
         <span className="flex items-center gap-1 text-[10px] text-slate-500">
           <span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block" />
-          Selected
+          {t('calendar.selected')}
         </span>
         <span className="flex items-center gap-1 text-[10px] text-slate-500">
           <span className="w-2 h-2 rounded-sm bg-slate-700 inline-block" />
-          Available
+          {t('calendar.available')}
         </span>
       </div>
     </div>

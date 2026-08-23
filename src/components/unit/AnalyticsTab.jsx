@@ -2,13 +2,9 @@
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
-
-const COLORS = {
-  Gathern: '#8b5cf6',
-  'Direct Call': '#3b82f6',
-};
+import { useTranslation } from 'react-i18next';
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6'];
 
@@ -27,11 +23,14 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 function PieTooltip({ active, payload }) {
+  const { t } = useTranslation();
   if (!active || !payload?.length) return null;
+  const count = payload[0].value;
+  const bookingLabel = count === 1 ? t('analytics.bookingSingle') : t('analytics.bookingPlural');
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
       <p className="text-sm font-semibold text-white">
-        {payload[0].name}: {payload[0].value} booking{payload[0].value !== 1 ? 's' : ''}
+        {payload[0].name}: {count} {bookingLabel}
       </p>
       <p className="text-xs text-slate-400">{payload[0].payload.pct}%</p>
     </div>
@@ -39,6 +38,7 @@ function PieTooltip({ active, payload }) {
 }
 
 export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
+  const { t } = useTranslation();
   const totalRevenue = unit.bookings.reduce((sum, b) => sum + b.amount, 0);
   const avgRevenue = unit.bookings.length > 0
     ? Math.round(totalRevenue / unit.bookings.length)
@@ -49,9 +49,9 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Total Revenue', value: `SAR ${totalRevenue.toLocaleString()}`, color: 'text-emerald-400' },
-          { label: 'Total Bookings', value: unit.bookings.length, color: 'text-indigo-400' },
-          { label: 'Avg per Booking', value: `SAR ${avgRevenue.toLocaleString()}`, color: 'text-violet-400' },
+          { label: t('analytics.totalRevenue'), value: `SAR ${totalRevenue.toLocaleString()}`, color: 'text-emerald-400' },
+          { label: t('analytics.totalBookings'), value: unit.bookings.length, color: 'text-indigo-400' },
+          { label: t('analytics.avgPerBooking'), value: `SAR ${avgRevenue.toLocaleString()}`, color: 'text-violet-400' },
         ].map(({ label, value, color }) => (
           <div key={label} className="rounded-xl bg-slate-800/40 border border-slate-700/40 p-3 text-center">
             <p className={`text-lg font-bold ${color}`}>{value}</p>
@@ -62,9 +62,9 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
 
       {/* Monthly Revenue Chart */}
       <div className="rounded-2xl bg-slate-800/40 border border-slate-700/40 p-5">
-        <h4 className="text-sm font-semibold text-slate-200 mb-4">Monthly Revenue Trend</h4>
+        <h4 className="text-sm font-semibold text-slate-200 mb-4">{t('analytics.monthlyRevenueTrend')}</h4>
         {monthlyRevenue.length === 0 ? (
-          <p className="text-center text-slate-500 text-sm py-8">No revenue data</p>
+          <p className="text-center text-slate-500 text-sm py-8">{t('analytics.noRevenue')}</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyRevenue} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
@@ -101,9 +101,9 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
 
       {/* Source Split Pie Chart */}
       <div className="rounded-2xl bg-slate-800/40 border border-slate-700/40 p-5">
-        <h4 className="text-sm font-semibold text-slate-200 mb-4">Client Acquisition Source</h4>
+        <h4 className="text-sm font-semibold text-slate-200 mb-4">{t('analytics.clientAcquisitionSource')}</h4>
         {sourceSplit.length === 0 ? (
-          <p className="text-center text-slate-500 text-sm py-8">No booking source data</p>
+          <p className="text-center text-slate-500 text-sm py-8">{t('analytics.noSources')}</p>
         ) : (
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <ResponsiveContainer width={180} height={180}>

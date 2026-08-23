@@ -13,8 +13,14 @@ export function Header({
   addLabel,
   onAddAction,
 }) {
-  const { t } = useTranslation();
-  const today = format(new Date(), 'EEEE, MMMM d, yyyy');
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'ar' ? 'ar-SA' : 'en-US';
+  const today = new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date());
   const handleAdd = onAddAction || onAddBooking;
   const label = addLabel || t('header.addBooking');
 

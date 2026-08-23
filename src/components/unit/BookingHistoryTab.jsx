@@ -25,6 +25,7 @@ function SourceTag({ source }) {
 }
 
 function WhatsAppButton({ booking, unitNumber }) {
+  const { t } = useTranslation();
   const [state, setState] = useState('idle'); // idle | loading | sent
 
   const handleSend = async () => {
@@ -44,7 +45,7 @@ function WhatsAppButton({ booking, unitNumber }) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
         <CheckCircle className="w-3.5 h-3.5" />
-        Sent!
+        {t('history.sent')}
       </span>
     );
   }
@@ -227,7 +228,7 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                   {hasInsurance && (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                       <Shield className="w-3 h-3" />
-                      {isArabic ? `تأمين: ${Number(booking.insurance).toLocaleString()} ر.س` : `Deposit: SAR ${Number(booking.insurance).toLocaleString()}`}
+                      {t('history.depositTag', { amount: Number(booking.insurance).toLocaleString() })}
                     </span>
                   )}
                 </div>

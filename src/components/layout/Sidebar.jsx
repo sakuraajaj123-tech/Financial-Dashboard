@@ -54,8 +54,8 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div className="overflow-hidden">
-              <h1 className="text-sm font-bold text-white tracking-wide truncate">PropertyPMS</h1>
-              <p className="text-xs text-slate-400 truncate">10-Unit Manager</p>
+              <h1 className="text-sm font-bold text-white tracking-wide truncate">{t('common.brandName')}</h1>
+              <p className="text-xs text-slate-400 truncate">{t('common.brandSubtitle')}</p>
             </div>
           </div>
 
@@ -110,8 +110,8 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
               <span className="text-xs font-bold text-white">PM</span>
             </div>
             <div className="overflow-hidden">
-              <p className="text-xs font-semibold text-slate-200 truncate">Property Manager</p>
-              <p className="text-xs text-slate-500 truncate">Admin</p>
+              <p className="text-xs font-semibold text-slate-200 truncate">{t('common.userRole')}</p>
+              <p className="text-xs text-slate-500 truncate">{t('common.admin')}</p>
             </div>
           </div>
         </div>

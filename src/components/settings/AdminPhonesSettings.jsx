@@ -118,11 +118,7 @@ export function AdminPhonesSettings() {
     if (!clean) return;
 
     if (!clean.startsWith('+') && !clean.startsWith('00') && !clean.startsWith('966') && !clean.startsWith('05')) {
-      setPhoneError(
-        isArabic
-          ? 'يرجى إدخال رقم هاتف بصيغة دولية صحيحة مثل +9665XXXXXXXX'
-          : 'Please enter a valid international number e.g. +9665XXXXXXXX'
-      );
+      setPhoneError(t('reminders.invalidPhoneError'));
       return;
     }
 
@@ -134,7 +130,7 @@ export function AdminPhonesSettings() {
     }
 
     if (adminPhones.includes(formatted)) {
-      setPhoneError(isArabic ? 'هذا الرقم مضاف مسبقاً' : 'This phone number already exists');
+      setPhoneError(t('reminders.phoneExistsError'));
       return;
     }
 
@@ -305,7 +301,7 @@ export function AdminPhonesSettings() {
                     <button
                       onClick={() => handleTestTemplate(phone, 'entry')}
                       disabled={entryState === 'loading'}
-                      title="Test check-in template (entry_reminder)"
+                      title={t('reminders.testEntryTitle')}
                       className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all flex items-center gap-1 disabled:opacity-50"
                     >
                       {entryState === 'loading' ? (
@@ -322,7 +318,7 @@ export function AdminPhonesSettings() {
                     <button
                       onClick={() => handleTestTemplate(phone, 'exit')}
                       disabled={exitState === 'loading'}
-                      title="Test check-out template (reminder)"
+                      title={t('reminders.testExitTitle')}
                       className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition-all flex items-center gap-1 disabled:opacity-50"
                     >
                       {exitState === 'loading' ? (
@@ -338,7 +334,7 @@ export function AdminPhonesSettings() {
                     {/* Remove number button */}
                     <button
                       onClick={() => handleRemovePhone(phone)}
-                      title="Remove number"
+                      title={t('reminders.removePhoneTitle')}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -385,7 +381,7 @@ export function AdminPhonesSettings() {
         {cronResult && (
           <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-1 animate-fade-in text-xs text-slate-300">
             <p className="font-semibold text-emerald-400">
-              {isArabic ? 'نتيجة تشغيل الفحص المجدول:' : 'Scheduled Cron Execution Result:'}
+              {t('reminders.cronResultTitle')}
             </p>
             <pre className="font-mono text-[11px] text-slate-300 overflow-x-auto p-2 rounded bg-slate-900/80">
               {JSON.stringify(cronResult, null, 2)}

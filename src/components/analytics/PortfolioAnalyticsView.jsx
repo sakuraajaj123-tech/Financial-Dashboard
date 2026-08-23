@@ -8,7 +8,7 @@ import { KPIGrid } from '../dashboard/KPIGrid';
 import { useTranslation } from 'react-i18next';
 import { UNIT_STATUS } from '../../data/seedData';
 import { StatusBadge } from '../shared/StatusBadge';
-import { Building2, DollarSign, CalendarCheck } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6'];
 
@@ -27,11 +27,14 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 function PieTooltip({ active, payload }) {
+  const { t } = useTranslation();
   if (!active || !payload?.length) return null;
+  const count = payload[0].value;
+  const bookingLabel = count === 1 ? t('analytics.bookingSingle') : t('analytics.bookingPlural');
   return (
     <div className="bg-slate-900/95 border border-slate-700/80 rounded-xl px-4 py-3 shadow-2xl backdrop-blur-md">
       <p className="text-sm font-bold text-white">
-        {payload[0].name}: {payload[0].value} {payload[0].value !== 1 ? 'bookings' : 'booking'}
+        {payload[0].name}: {count} {bookingLabel}
       </p>
       <p className="text-xs text-indigo-400 font-semibold mt-0.5">{payload[0].payload.pct}%</p>
     </div>
@@ -51,7 +54,6 @@ export function PortfolioAnalyticsView({
     (total, u) => total + u.bookings.reduce((sum, b) => sum + b.amount, 0),
     0
   );
-  const totalAllBookings = units.reduce((total, u) => total + u.bookings.length, 0);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -67,17 +69,17 @@ export function PortfolioAnalyticsView({
           <div className="flex items-center justify-between mb-5">
             <div>
               <h4 className="text-base font-bold text-white tracking-wide">
-                {t('kpi.monthlyRevenue')} - Trend
+                {t('analytics.monthlyRevenueTrendTitle')}
               </h4>
-              <p className="text-xs text-slate-400 mt-0.5">Historical revenue distribution across all units</p>
+              <p className="text-xs text-slate-400 mt-0.5">{t('analytics.revenueTrendSubtitle')}</p>
             </div>
             <div className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-              SAR {totalAllRevenue.toLocaleString()} Total
+              {t('analytics.totalBadge', { amount: totalAllRevenue.toLocaleString() })}
             </div>
           </div>
 
           {monthlyRevenue.length === 0 ? (
-            <p className="text-center text-slate-500 text-sm py-12">No revenue data available</p>
+            <p className="text-center text-slate-500 text-sm py-12">{t('analytics.noRevenueAvailable')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthlyRevenue} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
@@ -116,13 +118,13 @@ export function PortfolioAnalyticsView({
         <div className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/60 border border-slate-700/50 p-5 lg:p-6 shadow-xl backdrop-blur-sm flex flex-col justify-between">
           <div>
             <h4 className="text-base font-bold text-white tracking-wide">
-              {t('kpi.bookingSources')}
+              {t('analytics.bookingSources')}
             </h4>
-            <p className="text-xs text-slate-400 mt-0.5">Distribution by booking platform</p>
+            <p className="text-xs text-slate-400 mt-0.5">{t('analytics.sourceDistributionSubtitle')}</p>
           </div>
 
           {sourceSplit.length === 0 ? (
-            <p className="text-center text-slate-500 text-sm py-12">No source data available</p>
+            <p className="text-center text-slate-500 text-sm py-12">{t('analytics.noSourcesAvailable')}</p>
           ) : (
             <div className="my-auto py-4">
               <div className="flex justify-center">
@@ -182,13 +184,13 @@ export function PortfolioAnalyticsView({
             </div>
             <div>
               <h4 className="text-base font-bold text-white tracking-wide">
-                Unit Revenue & Performance Overview
+                {t('analytics.unitPerformanceTitle')}
               </h4>
-              <p className="text-xs text-slate-400 mt-0.5">Individual unit earnings and occupancy metrics</p>
+              <p className="text-xs text-slate-400 mt-0.5">{t('analytics.unitPerformanceSubtitle')}</p>
             </div>
           </div>
           <div className="text-xs text-slate-400 font-medium hidden sm:block">
-            {units.length} units total
+            {t('analytics.unitsTotal', { count: units.length })}
           </div>
         </div>
 
@@ -196,11 +198,11 @@ export function PortfolioAnalyticsView({
           <table className="w-full text-left rtl:text-right border-collapse">
             <thead>
               <tr className="border-b border-slate-800 text-xs font-semibold text-slate-400">
-                <th className="py-3 px-4">{t('unit.unit')}</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Bedrooms / Floor</th>
-                <th className="py-3 px-4">Total Bookings</th>
-                <th className="py-3 px-4 text-right rtl:text-left">Total Earnings</th>
+                <th className="py-3 px-4">{t('analytics.colUnit')}</th>
+                <th className="py-3 px-4">{t('analytics.colStatus')}</th>
+                <th className="py-3 px-4">{t('analytics.colBedroomsFloor')}</th>
+                <th className="py-3 px-4">{t('analytics.colTotalBookings')}</th>
+                <th className="py-3 px-4 text-right rtl:text-left">{t('analytics.colTotalEarnings')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-sm">

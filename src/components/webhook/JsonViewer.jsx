@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 function JsonNode({ data, keyName, isLast = true, depth = 0 }) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
 
   const isObject = data !== null && typeof data === 'object' && !Array.isArray(data);
@@ -60,7 +62,7 @@ function JsonNode({ data, keyName, isLast = true, depth = 0 }) {
 
         {collapsed && (
           <span className="text-slate-500 text-[11px] italic px-1 bg-slate-800/50 rounded border border-slate-700/50">
-            {count} {isArray ? 'items' : 'keys'}
+            {count} {isArray ? t('jsonViewer.items') : t('jsonViewer.keys')}
           </span>
         )}
 
@@ -102,6 +104,7 @@ function JsonNode({ data, keyName, isLast = true, depth = 0 }) {
 }
 
 export function JsonViewer({ data }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -120,12 +123,12 @@ export function JsonViewer({ data }) {
         {copied ? (
           <>
             <Check className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-emerald-400">Copied</span>
+            <span className="text-emerald-400">{t('jsonViewer.copied')}</span>
           </>
         ) : (
           <>
             <Copy className="w-3.5 h-3.5" />
-            <span>Copy</span>
+            <span>{t('jsonViewer.copy')}</span>
           </>
         )}
       </button>

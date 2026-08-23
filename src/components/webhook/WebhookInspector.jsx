@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageSquare, Wifi, WifiOff, Copy, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Square, Play, Pause, Download, ArrowLeft } from 'lucide-react';
+import { MessageSquare, Wifi, WifiOff, Copy, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft } from 'lucide-react';
 import { sendFreeTextReply, sendTermsTemplate, sendMediaMessage } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
 import { JsonViewer } from './JsonViewer';
@@ -9,6 +9,7 @@ import { collection, query, orderBy, onSnapshot, limit, startAfter, getDocs } fr
 
 // ── Voice Message Audio Player Component ──────────────────────────────────────
 function VoiceMessagePlayer({ src, isOutgoing, mimeType }) {
+  const { t } = useTranslation();
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -148,7 +149,7 @@ function VoiceMessagePlayer({ src, isOutgoing, mimeType }) {
           target="_blank"
           rel="noreferrer"
           className="text-slate-400 hover:text-slate-200 transition-colors shrink-0 p-1"
-          title="Download audio"
+          title={t('webhook.downloadDocument')}
         >
           <Download className="w-3.5 h-3.5" />
         </a>
@@ -156,8 +157,8 @@ function VoiceMessagePlayer({ src, isOutgoing, mimeType }) {
 
       {hasError && (
         <div className="text-[10px] text-rose-400 flex items-center justify-between bg-rose-500/10 px-2 py-1 rounded">
-          <span>تعذر تشغيل الصوت</span>
-          <a href={src} target="_blank" rel="noreferrer" className="underline ml-2">فتح مباشرة</a>
+          <span>{t('webhook.audioError')}</span>
+          <a href={src} target="_blank" rel="noreferrer" className="underline ml-2">{t('webhook.openDirectly')}</a>
         </div>
       )}
     </div>
@@ -179,17 +180,17 @@ function getMessageDirection(payload) {
   return 'incoming';
 }
 
-function extractMessageText(payload) {
+function extractMessageText(payload, t = null) {
   const changes = payload?.entry?.[0]?.changes?.[0]?.value;
   if (!changes?.messages?.length) return null;
   const msg = changes.messages[0];
   if (msg.type === 'text') return msg.text?.body || '';
   if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply')
     return msg.interactive.list_reply.title;
-  if (msg.type === 'image') return msg.image?.caption || '📸 صورة';
-  if (msg.type === 'audio') return '🎵 رسالة صوتية';
-  if (msg.type === 'video') return msg.video?.caption || '🎥 فيديو';
-  if (msg.type === 'document') return `📄 ${msg.document?.filename || 'مستند'}`;
+  if (msg.type === 'image') return msg.image?.caption || (t ? t('webhook.captionImage') : '📸 Photo');
+  if (msg.type === 'audio') return t ? t('webhook.captionAudio') : '🎵 Voice message';
+  if (msg.type === 'video') return msg.video?.caption || (t ? t('webhook.captionVideo') : '🎥 Video');
+  if (msg.type === 'document') return `📄 ${msg.document?.filename || (t ? t('webhook.captionDocument') : 'Document')}`;
   return null;
 }
 
@@ -311,7 +312,7 @@ function SendTermsPanel({ onSendSuccess }) {
       const res = await sendTermsTemplate(targetPhone, varVal);
       setStatus('sent');
       if (onSendSuccess) {
-        onSendSuccess(targetPhone, `[قالب الشروط: ${varVal}]`, res?.messages?.[0]?.id);
+        onSendSuccess(targetPhone, `[Terms Template: ${varVal}]`, res?.messages?.[0]?.id);
       }
       setTimeout(() => setStatus('idle'), 3000);
       setPhone('');
@@ -326,7 +327,7 @@ function SendTermsPanel({ onSendSuccess }) {
     <div className="bg-slate-900/80 border border-slate-700/50 rounded-2xl p-4 shadow-xl flex-shrink-0 relative overflow-hidden">
       <div className="flex items-center gap-2 mb-3">
         <FileText className="w-5 h-5 text-indigo-400" />
-        <h3 className="font-bold text-slate-200">إرسال قالب "الشروط" (Terms Template)</h3>
+        <h3 className="font-bold text-slate-200">{t('webhook.termsTitle')}</h3>
       </div>
       {status === 'error' && (
         <div className="mb-3 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
@@ -335,25 +336,25 @@ function SendTermsPanel({ onSendSuccess }) {
       )}
       <div className="flex flex-col sm:flex-row items-end gap-3">
         <div className="flex-1 w-full">
-          <label className="block text-xs text-slate-400 mb-1">رقم الهاتف (مع رمز الدولة، بدون +)</label>
+          <label className="block text-xs text-slate-400 mb-1">{t('webhook.termsPhoneLabel')}</label>
           <input
             type="text"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="مثال: 966500000000"
+            placeholder={t('webhook.termsPhonePlaceholder')}
             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500 outline-none transition-colors"
             dir="ltr"
           />
         </div>
         <div className="w-full sm:w-32">
-          <label className="block text-xs text-slate-400 mb-1">الرقم (1 إلى 10)</label>
+          <label className="block text-xs text-slate-400 mb-1">{t('webhook.termsNumberLabel')}</label>
           <input
             type="number"
             min="1"
             max="10"
             value={variable}
             onChange={(e) => setVariable(e.target.value)}
-            placeholder="مثال: 4"
+            placeholder={t('webhook.termsNumberPlaceholder')}
             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500 outline-none transition-colors text-center"
             dir="ltr"
           />
@@ -366,9 +367,9 @@ function SendTermsPanel({ onSendSuccess }) {
           {status === 'sending' ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : status === 'sent' ? (
-            <><Check className="w-4 h-4" /> تم الإرسال</>
+            <><Check className="w-4 h-4" /> {t('webhook.termsSent')}</>
           ) : (
-            <><Send className="w-4 h-4" /> إرسال القالب</>
+            <><Send className="w-4 h-4" /> {t('webhook.termsSendBtn')}</>
           )}
         </button>
       </div>
@@ -412,7 +413,6 @@ function compressImage(file, maxDim = 1080, quality = 0.8) {
 
 // ── Helper: pick best audio MIME type for MediaRecorder ──────────────────────
 function getAudioMimeType() {
-  // Prefer ogg/opus for native WhatsApp voice note rendering
   const preferred = [
     'audio/ogg; codecs=opus',
     'audio/ogg;codecs=opus',
@@ -426,7 +426,7 @@ function getAudioMimeType() {
       return mime;
     }
   }
-  return ''; // let browser pick default
+  return '';
 }
 
 function ReplyBox({ to, onSendSuccess }) {
@@ -500,9 +500,8 @@ function ReplyBox({ to, onSendSuccess }) {
       setCaption('');
     } catch (err) {
       console.error('Image compression failed:', err);
-      setErrorMsg('فشل ضغط الصورة');
+      setErrorMsg(t('webhook.imageCompressionFailed'));
     }
-    // Reset file input so the same file can be re-selected
     e.target.value = '';
   };
 
@@ -515,30 +514,27 @@ function ReplyBox({ to, onSendSuccess }) {
     if (!imagePreview || status === 'sending') return;
     setErrorMsg('');
 
-    // 1. Capture snapshot and clear preview immediately
     const { base64, mimeType, dataUrl } = imagePreview;
     const captionText = caption;
     setImagePreview(null);
     setCaption('');
 
-    // 2. Inject optimistic placeholder with local dataUrl so image appears instantly
     const optimisticMedia = {
       mediaType: 'image',
       mimeType,
       caption: captionText || null,
-      localObjectUrl: dataUrl, // show local preview while uploading
+      localObjectUrl: dataUrl,
     };
     const tempId = onSendSuccess
-      ? onSendSuccess(to, captionText || '📸 صورة', null, optimisticMedia, 'optimistic')
+      ? onSendSuccess(to, captionText || t('webhook.captionImage'), null, optimisticMedia, 'optimistic')
       : null;
 
-    // 3. Send in background
     setStatus('sending');
     sendMediaMessage(to, base64, mimeType, 'image', captionText || undefined)
       .then(res => {
         setStatus('sent');
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, captionText || '📸 صورة', res?.messages?.[0]?.id, {
+          onSendSuccess(to, captionText || t('webhook.captionImage'), res?.messages?.[0]?.id, {
             mediaType: 'image',
             mediaId: res?.mediaId,
             mimeType,
@@ -549,9 +545,9 @@ function ReplyBox({ to, onSendSuccess }) {
       })
       .catch(err => {
         setStatus('error');
-        setErrorMsg(err.message || 'فشل إرسال الصورة');
+        setErrorMsg(err.message || t('webhook.imageSendFailed'));
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, captionText || '📸 صورة', null, null, 'fail', tempId);
+          onSendSuccess(to, captionText || t('webhook.captionImage'), null, null, 'fail', tempId);
         }
       });
   };
@@ -574,7 +570,6 @@ function ReplyBox({ to, onSendSuccess }) {
 
       mediaRecorder.onstop = async () => {
         clearInterval(recordingTimerRef.current);
-        // Stop all tracks
         stream.getTracks().forEach(t => t.stop());
         streamRef.current = null;
 
@@ -583,7 +578,6 @@ function ReplyBox({ to, onSendSuccess }) {
         audioChunksRef.current = [];
 
         if (rawBlob.size < 500) {
-          // Too short — ignore
           setIsRecording(false);
           setRecordingDuration(0);
           return;
@@ -593,7 +587,6 @@ function ReplyBox({ to, onSendSuccess }) {
         setRecordingDuration(0);
         setErrorMsg('');
 
-        // 1. Create a temporary object URL so the audio player works immediately
         const localObjectUrl = URL.createObjectURL(rawBlob);
         const optimisticMedia = {
           mediaType: 'audio',
@@ -601,10 +594,9 @@ function ReplyBox({ to, onSendSuccess }) {
           localObjectUrl,
         };
         const tempId = onSendSuccess
-          ? onSendSuccess(to, '🎵 رسالة صوتية', null, optimisticMedia, 'optimistic')
+          ? onSendSuccess(to, t('webhook.captionAudio'), null, optimisticMedia, 'optimistic')
           : null;
 
-        // 2. Convert + upload in background
         setStatus('sending');
         convertBlobToMp3(rawBlob)
           .then(mp3Blob => new Promise((resolve, reject) => {
@@ -618,7 +610,7 @@ function ReplyBox({ to, onSendSuccess }) {
             setStatus('sent');
             const uploadedId = res?.mediaId;
             if (onSendSuccess && tempId) {
-              onSendSuccess(to, '🎵 رسالة صوتية', res?.messages?.[0]?.id, {
+              onSendSuccess(to, t('webhook.captionAudio'), res?.messages?.[0]?.id, {
                 mediaType: 'audio',
                 mediaId: uploadedId,
                 mediaUrl: res?.mediaUrl || (uploadedId ? `/api/media?id=${uploadedId}` : null),
@@ -630,9 +622,9 @@ function ReplyBox({ to, onSendSuccess }) {
           .catch(err => {
             console.error('Error sending audio message:', err);
             setStatus('error');
-            setErrorMsg(err.message || 'فشل إرسال التسجيل الصوتي');
+            setErrorMsg(err.message || t('webhook.audioSendFailed'));
             if (onSendSuccess && tempId) {
-              onSendSuccess(to, '🎵 رسالة صوتية', null, null, 'fail', tempId);
+              onSendSuccess(to, t('webhook.captionAudio'), null, null, 'fail', tempId);
             }
           });
       };
@@ -645,7 +637,7 @@ function ReplyBox({ to, onSendSuccess }) {
       }, 1000);
     } catch (err) {
       console.error('Microphone access denied:', err);
-      setErrorMsg('لا يمكن الوصول إلى الميكروفون');
+      setErrorMsg(t('webhook.micAccessError'));
       setStatus('error');
     }
   };
@@ -678,7 +670,6 @@ function ReplyBox({ to, onSendSuccess }) {
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearInterval(recordingTimerRef.current);
@@ -688,7 +679,6 @@ function ReplyBox({ to, onSendSuccess }) {
     };
   }, []);
 
-  // ── Image preview overlay ───────────────────────────────
   if (imagePreview) {
     return (
       <div className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0">
@@ -715,7 +705,7 @@ function ReplyBox({ to, onSendSuccess }) {
             type="text"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            placeholder="إضافة تعليق... (اختياري)"
+            placeholder={t('webhook.addCaptionPlaceholder')}
             className="flex-1 bg-[#2a3942] border-0 rounded-2xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 transition-all"
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendImage(); } }}
             dir="auto"
@@ -736,34 +726,30 @@ function ReplyBox({ to, onSendSuccess }) {
     );
   }
 
-  // ── Recording overlay ───────────────────────────────────
   if (isRecording) {
     return (
       <div className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {/* Cancel button */}
           <button
             onClick={cancelRecording}
             className="flex-shrink-0 w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 flex items-center justify-center transition-all"
-            title="إلغاء"
+            title={t('webhook.cancelRecording')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
 
-          {/* Recording indicator */}
           <div className="flex-1 flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
             <span className="text-sm text-slate-200 font-mono tracking-wider">
               {formatDuration(recordingDuration)}
             </span>
-            <span className="text-xs text-rose-400 animate-pulse">جارٍ التسجيل...</span>
+            <span className="text-xs text-rose-400 animate-pulse">{t('webhook.recording')}</span>
           </div>
 
-          {/* Stop / Send button */}
           <button
             onClick={stopRecording}
             className="flex-shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all shadow-md"
-            title="إيقاف و إرسال"
+            title={t('webhook.stopAndSend')}
           >
             <Send className="w-4 h-4 ml-0.5 rtl:-scale-x-100" />
           </button>
@@ -772,7 +758,6 @@ function ReplyBox({ to, onSendSuccess }) {
     );
   }
 
-  // ── Default text input ──────────────────────────────────
   return (
     <div className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0">
       {status === 'error' && (
@@ -780,7 +765,6 @@ function ReplyBox({ to, onSendSuccess }) {
           {errorMsg}
         </div>
       )}
-      {/* Hidden file input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -789,12 +773,11 @@ function ReplyBox({ to, onSendSuccess }) {
         onChange={handleImageSelect}
       />
       <div className="flex items-end gap-2">
-        {/* Image picker button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={status === 'sending'}
           className="flex-shrink-0 w-10 h-10 rounded-full bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-slate-200 flex items-center justify-center transition-all"
-          title="إرسال صورة"
+          title={t('webhook.sendImage')}
         >
           <ImagePlus className="w-5 h-5" />
         </button>
@@ -815,7 +798,6 @@ function ReplyBox({ to, onSendSuccess }) {
           }}
         />
 
-        {/* If there's text, show Send; otherwise show Mic */}
         {text.trim() ? (
           <button
             onClick={handleSend}
@@ -835,7 +817,7 @@ function ReplyBox({ to, onSendSuccess }) {
             onClick={startRecording}
             disabled={status === 'sending'}
             className="flex-shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all shadow-md"
-            title="تسجيل رسالة صوتية"
+            title={t('webhook.recordVoice')}
           >
             {status === 'sending' ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -866,7 +848,6 @@ function MessageBubble({ event, onDelete }) {
   const payload = event.payload;
 
   const isMessage = payload?.entry?.[0]?.changes?.[0]?.value?.messages;
-
   const time = formatTimestamp(event.timestamp);
 
   if (isMessage) {
@@ -880,15 +861,13 @@ function MessageBubble({ event, onDelete }) {
 
     return (
       <div className={`flex mb-2 group/msg relative w-full ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
-        {/* Avatar for incoming (on the left) */}
         {!isOutgoing && (
-          <div className="w-7 h-7 rounded-full bg-indigo-500/30 flex items-center justify-center flex-shrink-0 mr-2 self-end mb-1">
+          <div className="w-7 h-7 rounded-full bg-indigo-500/30 flex items-center justify-center flex-shrink-0 mr-2 rtl:mr-0 rtl:ml-2 self-end mb-1">
             <User className="w-3.5 h-3.5 text-indigo-300" />
           </div>
         )}
 
         <div className={`max-w-[75%] flex flex-col ${isOutgoing ? 'items-end' : 'items-start'}`}>
-          {/* Bubble */}
           <div className={`relative px-3.5 py-2 rounded-2xl shadow-sm text-sm ${
             isOutgoing
               ? 'bg-[#005c4b] text-slate-100 rounded-br-sm'
@@ -897,7 +876,7 @@ function MessageBubble({ event, onDelete }) {
             {isOutgoing && (
               <span className="flex items-center gap-1 text-[10px] text-emerald-300/80 font-medium mb-1" dir="ltr">
                 <Bot className="w-2.5 h-2.5" />
-                {msg.from === 'admin' ? 'Admin' : 'Auto-reply'}
+                {msg.from === 'admin' ? t('webhook.adminLabel') : t('webhook.autoReplyLabel')}
               </span>
             )}
 
@@ -915,7 +894,7 @@ function MessageBubble({ event, onDelete }) {
                   </a>
                 ) : (
                   <div className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg text-xs text-slate-300">
-                    📸 صورة
+                    {t('webhook.captionImage')}
                   </div>
                 )}
                 {msg.image?.caption && (
@@ -938,7 +917,7 @@ function MessageBubble({ event, onDelete }) {
                 ) : (
                   <div className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg text-xs text-slate-300">
                     <Mic className="w-4 h-4 text-emerald-400" />
-                    <span>🎵 رسالة صوتية</span>
+                    <span>{t('webhook.captionAudio')}</span>
                   </div>
                 )}
               </div>
@@ -956,7 +935,7 @@ function MessageBubble({ event, onDelete }) {
                   />
                 ) : (
                   <div className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg text-xs text-slate-300">
-                    🎥 فيديو
+                    {t('webhook.captionVideo')}
                   </div>
                 )}
                 {msg.video?.caption && (
@@ -980,12 +959,12 @@ function MessageBubble({ event, onDelete }) {
                   >
                     <FileText className="w-5 h-5 text-indigo-400 shrink-0" />
                     <span className="truncate max-w-[180px] font-medium">
-                      {msg.document?.filename || 'تحميل المستند'}
+                      {msg.document?.filename || t('webhook.downloadDocument')}
                     </span>
                   </a>
                 ) : (
                   <div className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg text-xs text-slate-300">
-                    📄 مستند
+                    {t('webhook.captionDocument')}
                   </div>
                 )}
               </div>
@@ -1015,7 +994,6 @@ function MessageBubble({ event, onDelete }) {
               </p>
             )}
 
-            {/* Fallback for other types */}
             {!['image', 'audio', 'video', 'document', 'sticker', 'text', 'interactive'].includes(msgType) && (
               <p className="whitespace-pre-wrap leading-relaxed break-words text-sm" dir="auto">
                 📎 {msgType}
@@ -1048,18 +1026,16 @@ function MessageBubble({ event, onDelete }) {
           </details>
         </div>
 
-        {/* Avatar for outgoing (on the right) */}
         {isOutgoing && (
-          <div className="w-7 h-7 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0 ml-2 self-end mb-1">
+          <div className="w-7 h-7 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0 ml-2 rtl:ml-0 rtl:mr-2 self-end mb-1">
             <Bot className="w-3.5 h-3.5 text-emerald-300" />
           </div>
         )}
 
-        {/* Delete on hover */}
         {onDelete && (
           <button
             onClick={onDelete}
-            title="Delete message"
+            title={t('common.delete')}
             className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 p-1.5 bg-slate-800/80 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-full transition-all z-10 ${
               isOutgoing ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
             }`}
@@ -1079,9 +1055,7 @@ function MessageBubble({ event, onDelete }) {
 export function WebhookInspector() {
   const { t } = useTranslation();
 
-  // Initial load without caching
   const [chats, setChats] = useState({});
-
   const [activePhone, setActivePhone] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -1094,18 +1068,16 @@ export function WebhookInspector() {
   const notifiedIdsRef = useRef(new Set());
 
   // ── Pagination State & Refs ──────────────────────────────────────────────────
-  // Chat Sidebar Pagination
   const [chatsLimit, setChatsLimit] = useState(20);
   const [hasMoreChats, setHasMoreChats] = useState(true);
   const [isLoadingMoreChats, setIsLoadingMoreChats] = useState(false);
 
-  // Message History Pagination
-  const [historicalMessages, setHistoricalMessages] = useState({}); // { [phone]: Message[] }
-  const [hasMoreMessages, setHasMoreMessages] = useState({});       // { [phone]: boolean }
+  const [historicalMessages, setHistoricalMessages] = useState({});
+  const [hasMoreMessages, setHasMoreMessages] = useState({});
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-  const oldestMsgDocRef = useRef({});                                // { [phone]: DocumentSnapshot }
+  const oldestMsgDocRef = useRef({});
   const isFetchingOlderRef = useRef(false);
-  const isPrependingHistoryRef = useRef(false);                      // blocks auto-scroll during pagination
+  const isPrependingHistoryRef = useRef(false);
   const prevNewestMsgIdRef = useRef(null);
 
   const topic = getWebhookTopic();
@@ -1116,16 +1088,12 @@ export function WebhookInspector() {
   const activeHistorical = activePhone ? (historicalMessages[activePhone] || []) : [];
   const activeRealtime = activeChat?.messages || [];
 
-  // Merge historical older messages + real-time 50 newest messages
   const activeMessages = useMemo(() => {
     if (!activePhone) return [];
     const map = new Map();
-    // 1. Add historical older messages
     activeHistorical.forEach(m => map.set(m.id, m));
-    // 2. Add real-time recent messages (overwrites matching IDs with confirmed data)
     activeRealtime.forEach(m => map.set(m.id, m));
 
-    // 3. Sort chronologically (ascending)
     return Array.from(map.values()).sort(
       (a, b) => parseInt(a.timestamp || 0) - parseInt(b.timestamp || 0)
     );
@@ -1133,7 +1101,6 @@ export function WebhookInspector() {
 
   const activeMessagesLength = activeMessages.length;
 
-  // ── Load More Handlers ──────────────────────────────────────────────────────
   const handleLoadMoreChats = useCallback(() => {
     if (!hasMoreChats || isLoadingMoreChats) return;
     setIsLoadingMoreChats(true);
@@ -1166,15 +1133,12 @@ export function WebhookInspector() {
         oldestMsgDocRef.current[phone] = olderSnap.docs[olderSnap.docs.length - 1];
         const olderMsgs = olderSnap.docs.map(doc => transformFirestoreMessage(doc, phone));
 
-        // 1. Capture exact DOM scroll dimensions IMMEDIATELY before prepending state update
         const container = scrollContainerRef.current;
         const prevScrollHeight = container ? container.scrollHeight : 0;
         const prevScrollTop = container ? container.scrollTop : 0;
 
-        // 2. Set flag to block auto-scroll effect from triggering on this render
         isPrependingHistoryRef.current = true;
 
-        // 3. Prepend older messages to state
         setHistoricalMessages(prev => {
           const existing = prev[phone] || [];
           const newUnique = olderMsgs.filter(om => !existing.some(em => isSameMessage(em, om)));
@@ -1184,7 +1148,6 @@ export function WebhookInspector() {
           };
         });
 
-        // 4. Anchor scroll position right after DOM renders prepended messages
         requestAnimationFrame(() => {
           if (container) {
             const newScrollHeight = container.scrollHeight;
@@ -1215,7 +1178,6 @@ export function WebhookInspector() {
     }
   };
 
-  // Smart auto-scroll to bottom (strictly for chat switch or genuine new incoming/outgoing messages)
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -1227,19 +1189,16 @@ export function WebhookInspector() {
     prevMessagesLengthRef.current = activeMessagesLength;
 
     if (isChatSwitch) {
-      // Always scroll to bottom instantly when switching chat
       prevNewestMsgIdRef.current = activeMessages[activeMessagesLength - 1]?.id || null;
       container.scrollTop = container.scrollHeight;
       return;
     }
 
-    // STRICT GUARD: If we just loaded historical older messages, skip auto-scrolling
     if (isPrependingHistoryRef.current) {
       isPrependingHistoryRef.current = false;
       return;
     }
 
-    // Only scroll if a NEW message was appended to the BOTTOM (newest message ID changed)
     const currentNewestMsg = activeMessages[activeMessagesLength - 1];
     const currentNewestId = currentNewestMsg?.id || null;
     const isNewMessageAtBottom = currentNewestId && currentNewestId !== prevNewestMsgIdRef.current;
@@ -1250,8 +1209,7 @@ export function WebhookInspector() {
       const direction = getMessageDirection(payload);
       const isOutgoing = direction === 'outgoing' || currentNewestMsg?.from === 'bot' || currentNewestMsg?.from === 'admin' || currentNewestMsg?._optimistic;
 
-      // Threshold to detect if the user is already near bottom (<= 150px)
-      const threshold = 150; // px
+      const threshold = 150;
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
 
       if (isOutgoing || isNearBottom) {
@@ -1265,17 +1223,15 @@ export function WebhookInspector() {
     }
   }, [activePhone, activeMessagesLength, activeMessages]);
 
-  // Keep activePhoneRef in sync for use inside stable callbacks & onSnapshot
   useEffect(() => { activePhoneRef.current = activePhone; }, [activePhone]);
 
-  // ── Browser Notification helper ────────────────────────────────────────────
   const sendBrowserNotification = useCallback((contactName, text) => {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       new Notification(`💬 ${contactName}`, {
         body: text || 'New WhatsApp message',
         icon: '/favicon.ico',
-        tag: contactName, // prevent duplicate stacking for same sender
+        tag: contactName,
       });
     } else if (Notification.permission === 'default') {
       Notification.requestPermission().then(perm => {
@@ -1290,20 +1246,18 @@ export function WebhookInspector() {
     }
   }, []);
 
-  // ── Process incoming SSE payload (notifications only – data comes via onSnapshot) ──
   const handleIncomingPayload = useCallback((payload) => {
     const changes = payload?.entry?.[0]?.changes?.[0]?.value;
     if (!changes?.messages || changes.messages.length === 0) return;
 
     const phone = changes.messages[0].from;
     const contactName = changes.contacts?.[0]?.profile?.name || phone;
-    const messageText = extractMessageText(payload);
+    const messageText = extractMessageText(payload, t);
     const dir = getMessageDirection(payload);
     const isUserMessage = dir === 'incoming';
     const currentActivePhone = activePhoneRef.current;
     const msgId = changes.messages[0].id;
 
-    // Browser notification for incoming user messages when not on their chat
     if (isUserMessage && phone !== currentActivePhone && msgId) {
       if (!notifiedIdsRef.current.has(msgId)) {
         notifiedIdsRef.current.add(msgId);
@@ -1313,17 +1267,12 @@ export function WebhookInspector() {
         );
       }
     }
-  }, [sendBrowserNotification]);
+  }, [sendBrowserNotification, t]);
 
-  // ── Optimistic UI Helpers ──────────────────────────────────────────────────
-
-  // Step 1 – Immediately inject a "sending" placeholder into the chat thread.
-  // Returns the tempId so the caller can confirm or fail it later.
   const addOptimisticMessage = useCallback((phone, text, media) => {
     const cleanPhone = phone.replace('+', '').trim();
     const tempId = `opt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    // For audio optimistic, use object URL so the player works immediately
     const mediaUrl = media?.localObjectUrl || media?.mediaUrl || (media?.mediaId ? `/api/media?id=${media.mediaId}` : null);
 
     const msgObj = {
@@ -1349,7 +1298,7 @@ export function WebhookInspector() {
     const optimisticEvent = {
       id: tempId,
       timestamp,
-      _optimistic: 'sending', // flag rendered by MessageBubble
+      _optimistic: 'sending',
       payload: {
         entry: [{ changes: [{ value: { messages: [msgObj] } }] }],
       },
@@ -1372,7 +1321,6 @@ export function WebhookInspector() {
     return tempId;
   }, []);
 
-  // Step 2a – Replace the optimistic placeholder with the real confirmed message.
   const confirmOptimisticMessage = useCallback((phone, tempId, realMessageId, media) => {
     const cleanPhone = phone.replace('+', '').trim();
     setChats(prev => {
@@ -1380,24 +1328,20 @@ export function WebhookInspector() {
       if (!existing) return prev;
       const messages = existing.messages.map(m => {
         if (m.id !== tempId) return m;
-        // Swap temp placeholder with the real message data
         const realMediaUrl = media?.mediaUrl || (media?.mediaId ? `/api/media?id=${media.mediaId}` : null);
         const realMsg = m.payload.entry[0].changes[0].value.messages[0];
-        // Revoke the temporary object URL to free memory
         if (realMsg.mediaUrl?.startsWith('blob:')) URL.revokeObjectURL(realMsg.mediaUrl);
-        // Patch in real IDs
         realMsg.id = realMessageId || tempId;
         realMsg.mediaId = media?.mediaId || realMsg.mediaId;
         realMsg.mediaUrl = realMediaUrl || realMsg.mediaUrl;
         if (realMsg.image) { realMsg.image.id = media?.mediaId; realMsg.image.link = realMediaUrl; realMsg.image.url = realMediaUrl; }
         if (realMsg.audio) { realMsg.audio.id = media?.mediaId; realMsg.audio.link = realMediaUrl; realMsg.audio.url = realMediaUrl; }
-        return { ...m, id: realMessageId || tempId, _optimistic: undefined }; // remove sending flag
+        return { ...m, id: realMessageId || tempId, _optimistic: undefined };
       });
       return { ...prev, [cleanPhone]: { ...existing, messages } };
     });
   }, []);
 
-  // Step 2b – Mark the placeholder as failed so user sees the "!" indicator.
   const failOptimisticMessage = useCallback((phone, tempId) => {
     const cleanPhone = phone.replace('+', '').trim();
     setChats(prev => {
@@ -1410,10 +1354,9 @@ export function WebhookInspector() {
     });
   }, []);
 
-  // ── Delete Handlers ────────────────────────────────────────────────────────
   const handleDeleteChat = async (e, phone) => {
     e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to delete the entire chat with +${phone}?`)) return;
+    if (!window.confirm(t('webhook.deleteChatConfirm', { phone }))) return;
     setIsDeleting(true);
     try {
       const res = await fetch('/api/chats', {
@@ -1440,7 +1383,7 @@ export function WebhookInspector() {
   };
 
   const handleClearMessages = async (phone) => {
-    if (!window.confirm(`Clear all messages for +${phone}? The contact will remain.`)) return;
+    if (!window.confirm(t('webhook.clearChatConfirm', { phone }))) return;
     setIsDeleting(true);
     try {
       const res = await fetch('/api/chats', {
@@ -1465,9 +1408,8 @@ export function WebhookInspector() {
   };
 
   const handleDeleteMessage = async (phone, messageId) => {
-    if (!window.confirm('Delete this message?')) return;
+    if (!window.confirm(t('webhook.deleteMessageConfirm'))) return;
     try {
-      // Optimistically remove from state
       setChats(prev => ({
         ...prev,
         [phone]: {
@@ -1490,7 +1432,6 @@ export function WebhookInspector() {
     }
   };
 
-  // Open a chat, clear its unread badge, and mark messages as read in the backend
   const handleOpenChat = (phone) => {
     activePhoneRef.current = phone;
     setActivePhone(phone);
@@ -1507,7 +1448,6 @@ export function WebhookInspector() {
       };
     });
 
-    // Mark as read in the backend
     fetch('/api/chats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1515,11 +1455,10 @@ export function WebhookInspector() {
     }).catch(err => console.error('Failed to mark chat as read in backend:', err));
   };
 
-  // ── Real-time Firestore Listeners (with pagination limit & fallback) ──────
   useEffect(() => {
-    const messageUnsubs = {};      // { [phone]: unsubscribe fn }
-    const chatMetaCache = {};      // { [phone]: { contactName, botPausedUntil } }
-    const initializedPhones = new Set(); // tracks first-snapshot-received per phone
+    const messageUnsubs = {};
+    const chatMetaCache = {};
+    const initializedPhones = new Set();
 
     const chatsRef = collection(db, 'chats');
     let chatsQuery;
@@ -1529,7 +1468,6 @@ export function WebhookInspector() {
       chatsQuery = query(chatsRef, limit(chatsLimit));
     }
 
-    // 1. Listen to the top-level chats collection for contact metadata (up to chatsLimit)
     const unsubChats = onSnapshot(chatsQuery, (snapshot) => {
       if (snapshot.docs.length < chatsLimit) {
         setHasMoreChats(false);
@@ -1543,13 +1481,11 @@ export function WebhookInspector() {
         const data = change.doc.data();
 
         if (change.type === 'added' || change.type === 'modified') {
-          // Cache metadata so message handlers can read it without a stale closure
           chatMetaCache[phone] = {
             contactName: data.contactName || phone,
             botPausedUntil: data.botPausedUntil || null,
           };
 
-          // For metadata-only updates, patch state immediately
           if (change.type === 'modified') {
             setChats(prev => {
               const existing = prev[phone];
@@ -1561,7 +1497,6 @@ export function WebhookInspector() {
             });
           }
 
-          // 2. Set up messages subcollection listener (50 most recent messages)
           if (!messageUnsubs[phone]) {
             const q = query(
               collection(db, 'chats', phone, 'messages'),
@@ -1570,18 +1505,15 @@ export function WebhookInspector() {
             );
 
             messageUnsubs[phone] = onSnapshot(q, (msgSnapshot) => {
-              // Store oldest doc snapshot for startAfter pagination
               if (msgSnapshot.docs.length > 0 && !oldestMsgDocRef.current[phone]) {
                 oldestMsgDocRef.current[phone] = msgSnapshot.docs[msgSnapshot.docs.length - 1];
               }
 
-              // Set initial hasMoreMessages for this phone
               setHasMoreMessages(prev => {
                 if (prev[phone] !== undefined) return prev;
                 return { ...prev, [phone]: msgSnapshot.docs.length >= 50 };
               });
 
-              // Reverse docs so they are chronological (ascending)
               const firestoreMessages = msgSnapshot.docs
                 .map(doc => transformFirestoreMessage(doc, phone))
                 .reverse();
@@ -1590,7 +1522,6 @@ export function WebhookInspector() {
               const currentActivePhone = activePhoneRef.current;
               const isActive = phone === currentActivePhone;
 
-              // ── Update chats state ──────────────────────────────────────
               setChats(prev => {
                 const existing = prev[phone];
 
@@ -1619,7 +1550,6 @@ export function WebhookInspector() {
                 };
               });
 
-              // ── Notifications (side-effects) ─────
               if (!initializedPhones.has(phone)) {
                 initializedPhones.add(phone);
                 firestoreMessages.forEach(m => notifiedIdsRef.current.add(m.id));
@@ -1633,13 +1563,12 @@ export function WebhookInspector() {
                   notifiedIdsRef.current.add(last.id);
                   sendBrowserNotification(
                     meta.contactName || `+${phone}`,
-                    extractMessageText(last.payload)
+                    extractMessageText(last.payload, t)
                   );
                 }
                 firestoreMessages.forEach(m => notifiedIdsRef.current.add(m.id));
               }
 
-              // Mark as read in backend if active chat has new unread incoming
               if (isActive) {
                 const hasNewUnread = firestoreMessages.some(
                   m => !m.isRead && getMessageDirection(m.payload) === 'incoming'
@@ -1680,9 +1609,8 @@ export function WebhookInspector() {
       unsubChats();
       Object.values(messageUnsubs).forEach(unsub => unsub());
     };
-  }, [chatsLimit, sendBrowserNotification]);
+  }, [chatsLimit, sendBrowserNotification, t]);
 
-  // ── Live ntfy.sh SSE stream ────────────────────────────────────────────────
   useEffect(() => {
     setConnectionStatus('connecting');
     const eventSource = new EventSource(`https://ntfy.sh/${topic}/sse`);
@@ -1700,7 +1628,6 @@ export function WebhookInspector() {
     return () => eventSource.close();
   }, [topic, handleIncomingPayload]);
 
-  // Request notification permission on mount
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -1785,10 +1712,10 @@ export function WebhookInspector() {
         addOptimisticMessage(phone, text, media);
       }} />
 
-      {/* Chat Interface Container (Master-Detail on Mobile, Side-by-Side on Desktop) */}
+      {/* Chat Interface Container */}
       <div className="w-full flex-1 min-h-0 flex flex-col md:flex-row bg-slate-950/50 backdrop-blur-md border border-slate-700/50 rounded-2xl overflow-hidden shadow-xl relative">
 
-        {/* Left Pane: Contacts / Chats List (Shown on Mobile when activePhone is null, or on Desktop) */}
+        {/* Left Pane: Contacts / Chats List */}
         <div className={`w-full md:w-80 md:flex flex-shrink-0 bg-[#111b21] border-r rtl:border-r-0 rtl:border-l border-slate-700/50 flex-col h-full min-h-0 ${
           activePhone ? 'hidden md:flex' : 'flex'
         }`}>
@@ -1810,7 +1737,7 @@ export function WebhookInspector() {
                   <button
                     key={chat.phone}
                     onClick={() => handleOpenChat(chat.phone)}
-                    className={`w-full text-left px-4 py-3 hover:bg-slate-800/40 transition-colors flex items-center gap-3 active:bg-slate-800/70 ${
+                    className={`w-full text-left rtl:text-right px-4 py-3 hover:bg-slate-800/40 transition-colors flex items-center gap-3 active:bg-slate-800/70 ${
                       activePhone === chat.phone ? 'bg-slate-800/60 border-l-2 rtl:border-l-0 rtl:border-r-2 border-emerald-500' : ''
                     }`}
                   >
@@ -1846,7 +1773,7 @@ export function WebhookInspector() {
                     <button
                       onClick={(e) => handleDeleteChat(e, chat.phone)}
                       disabled={isDeleting}
-                      title="Delete Chat"
+                      title={t('common.delete')}
                       className="p-1.5 bg-transparent hover:bg-rose-500/10 text-slate-600 hover:text-rose-400 rounded-full transition-all disabled:opacity-50 flex-shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1865,10 +1792,10 @@ export function WebhookInspector() {
                       {isLoadingMoreChats ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                          <span>جارٍ تحميل المزيد...</span>
+                          <span>{t('webhook.loadingMore')}</span>
                         </>
                       ) : (
-                        <span>تحميل المزيد من المحادثات</span>
+                        <span>{t('webhook.loadMoreChats')}</span>
                       )}
                     </button>
                   </div>
@@ -1878,7 +1805,7 @@ export function WebhookInspector() {
           </div>
         </div>
 
-        {/* Right Pane: Active Chat Window (Shown on Mobile when activePhone is set, or on Desktop) */}
+        {/* Right Pane: Active Chat Window */}
         <div className={`w-full md:flex-1 md:flex flex-col bg-[#0b141a] h-full min-h-0 ${
           activePhone ? 'flex' : 'hidden md:flex'
         }`}>
@@ -1886,12 +1813,12 @@ export function WebhookInspector() {
             <>
               {/* Chat Header */}
               <div className="bg-[#202c33] border-b border-slate-700/50 px-3 sm:px-4 py-3 flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
-                {/* Mobile Back Button (Visible ONLY on mobile) */}
+                {/* Mobile Back Button */}
                 <button
                   type="button"
                   onClick={() => setActivePhone(null)}
                   className="p-1.5 -ms-1 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-xl md:hidden flex items-center justify-center shrink-0 transition-colors"
-                  title="الرجوع لقائمة المحادثات"
+                  title={t('webhook.backToChats')}
                   aria-label="Back to contacts list"
                 >
                   <ArrowLeft className="w-5 h-5 rtl:rotate-180" />
@@ -1906,11 +1833,11 @@ export function WebhookInspector() {
                     {activeChat.botPausedUntil && activeChat.botPausedUntil > Date.now() && (
                       <span
                         className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium flex items-center gap-1"
-                        title="البوت متوقف مؤقتاً لمدة 24 ساعة بسبب إرسال رسالة يدوية"
+                        title={t('webhook.botPausedTooltip')}
                       >
                         <Bot className="w-3 h-3 text-amber-400/80" />
-                        <span className="hidden sm:inline">محادثة يدوية (البوت متوقف)</span>
-                        <span className="sm:hidden">يدوي</span>
+                        <span className="hidden sm:inline">{t('webhook.manualChatBadge')}</span>
+                        <span className="sm:hidden">{t('webhook.manualChatBadgeShort')}</span>
                       </span>
                     )}
                   </div>
@@ -1922,23 +1849,22 @@ export function WebhookInspector() {
                   className="px-2.5 sm:px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 flex-shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">Clear</span>
+                  <span className="hidden xs:inline">{t('webhook.clearChat')}</span>
                 </button>
               </div>
 
-              {/* Message History (Scrollable Area) */}
+              {/* Message History */}
               <div
                 ref={scrollContainerRef}
                 onScroll={handleMessageScroll}
                 className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 flex flex-col relative min-h-0"
                 dir="ltr"
               >
-                {/* Subtle WhatsApp-style tiled bg */}
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
                   style={{ backgroundImage: "url('https://static.whatsapp.net/rsrc.php/v3/yl/r/rrotdJpG0qL.png')", backgroundRepeat: 'repeat' }}
                 />
                 <div className="relative z-10 flex-1 flex flex-col justify-end">
-                  {/* Message History Pagination Control */}
+                  {/* Pagination control */}
                   {activePhone && hasMoreMessages[activePhone] !== false && (
                     <div className="text-center py-2 flex justify-center items-center my-1 z-20">
                       <button
@@ -1949,12 +1875,12 @@ export function WebhookInspector() {
                         {isLoadingOlder ? (
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                            <span>جارٍ تحميل الرسائل الأقدم...</span>
+                            <span>{t('webhook.loadingOlderMessages')}</span>
                           </>
                         ) : (
                           <>
                             <ArrowLeft className="w-3.5 h-3.5 rotate-90 text-indigo-400" />
-                            <span>تحميل الرسائل الأقدم</span>
+                            <span>{t('webhook.loadOlderMessages')}</span>
                           </>
                         )}
                       </button>
@@ -1962,12 +1888,12 @@ export function WebhookInspector() {
                   )}
                   {activePhone && hasMoreMessages[activePhone] === false && activeMessages.length > 0 && (
                     <div className="text-center py-2 text-[11px] text-slate-500 font-mono select-none my-1">
-                      بداية المحادثة
+                      {t('webhook.conversationStart')}
                     </div>
                   )}
 
                   {activeMessages.length === 0 && (
-                    <div className="text-center text-slate-600 text-sm py-8">No messages yet</div>
+                    <div className="text-center text-slate-600 text-sm py-8">{t('webhook.noMessages')}</div>
                   )}
                   {activeMessages.map((event) => (
                     <MessageBubble
@@ -1980,7 +1906,7 @@ export function WebhookInspector() {
                 </div>
               </div>
 
-              {/* Input Area (Fixed at bottom) */}
+              {/* Input Area */}
               <ReplyBox
                 to={activePhone}
                 onSendSuccess={(phone, text, messageId, media, action, tempId) => {
@@ -2005,4 +1931,3 @@ export function WebhookInspector() {
     </div>
   );
 }
-

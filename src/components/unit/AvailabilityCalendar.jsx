@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import {
-  addDays,
   startOfMonth,
   endOfMonth,
   startOfWeek,
@@ -14,8 +13,12 @@ import {
   isWithinInterval,
   parseISO,
 } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(month);
     const monthEnd = endOfMonth(month);
@@ -39,22 +42,31 @@ export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
     );
   }
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthLabel = useMemo(() => {
+    return new Intl.DateTimeFormat(isArabic ? 'ar-SA' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    }).format(month);
+  }, [month, isArabic]);
+
+  const dayNames = isArabic
+    ? ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
     <div className="rounded-2xl bg-slate-800/40 border border-slate-700/40 p-5">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-sm font-semibold text-slate-200">
-          {format(month, 'MMMM yyyy')} — Availability
+          {t('calendar.monthAvailability', { month: monthLabel })}
         </h4>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-rose-500/60" />
-            <span className="text-slate-400">Booked</span>
+            <span className="text-slate-400">{t('calendar.booked')}</span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30" />
-            <span className="text-slate-400">Available</span>
+            <span className="text-slate-400">{t('calendar.available')}</span>
           </span>
         </div>
       </div>
@@ -97,7 +109,7 @@ export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
                 booking
                   ? `${booking.tenant} (${booking.source})`
                   : inMonth
-                  ? 'Available'
+                  ? t('calendar.available')
                   : ''
               }
             >
