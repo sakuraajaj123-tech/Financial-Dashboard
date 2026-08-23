@@ -209,5 +209,7 @@ async function processRemindersCore(event) {
   }
 }
 
-// Scheduled wrapper runs every 5 minutes on Netlify, while also responding to HTTP invokes
-export const handler = schedule('*/5 * * * *', processRemindersCore);
+// Standard handler compatible with both Netlify Cron (configured via netlify.toml schedule) and direct HTTP POST triggers
+export async function handler(event, context) {
+  return await processRemindersCore(event, context);
+}
