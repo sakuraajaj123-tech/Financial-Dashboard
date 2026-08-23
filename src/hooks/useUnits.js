@@ -195,6 +195,7 @@ export function useUnits() {
       entryReminderMinutes,
       exitReminderMinutes,
       amount: Number(bookingData.amount) || 0,
+      insurance: Number(bookingData.insurance) || 0,
       notes: bookingData.notes || '',
     };
 
@@ -275,6 +276,7 @@ export function useUnits() {
       entryReminderMinutes,
       exitReminderMinutes,
       amount: Number(updatedData.amount) || 0,
+      insurance: Number(updatedData.insurance) || 0,
       notes: updatedData.notes || '',
     };
 

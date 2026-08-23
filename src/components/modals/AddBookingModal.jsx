@@ -1,7 +1,7 @@
 // AddBookingModal.jsx — Modal form for booking creation and details/edit mode
 
 import { useState, useEffect, useRef } from 'react';
-import { X, User, Phone, Calendar, DollarSign, Home, FileText, Clock, Bell } from 'lucide-react';
+import { X, User, Phone, Calendar, DollarSign, Home, FileText, Clock, Bell, Shield } from 'lucide-react';
 import { Button } from '../shared/Button';
 import { BOOKING_SOURCES } from '../../data/seedData';
 import { useTranslation } from 'react-i18next';
@@ -39,6 +39,7 @@ const initialForm = {
   exitReminderMinutes: 15,
   source: BOOKING_SOURCES.DIRECT,
   amount: '',
+  insurance: '',
   notes: '',
 };
 
@@ -105,6 +106,7 @@ export function AddBookingModal({
         exitReminderMinutes: initialBooking.exitReminderMinutes ?? 15,
         source: initialBooking.source || BOOKING_SOURCES.DIRECT,
         amount: initialBooking.amount !== undefined ? String(initialBooking.amount) : '',
+        insurance: initialBooking.insurance !== undefined && initialBooking.insurance !== null ? String(initialBooking.insurance) : '',
         notes: initialBooking.notes || '',
       };
     }
@@ -189,6 +191,7 @@ export function AddBookingModal({
           entryReminderMinutes: Number(form.entryReminderMinutes),
           exitReminderMinutes: Number(form.exitReminderMinutes),
           amount: form.amount ? Number(form.amount) : 0,
+          insurance: form.insurance ? Number(form.insurance) : 0,
           notes: form.notes.trim(),
         },
         initialBooking?.id
@@ -390,8 +393,8 @@ export function AddBookingModal({
             </div>
           </div>
 
-          {/* Source + Amount row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Source + Amount + Insurance row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <InputWrapper label={t('modal.bookingSource')} icon={FileText}>
               <select
                 value={form.source}
@@ -402,6 +405,7 @@ export function AddBookingModal({
                 <option value={BOOKING_SOURCES.GATHERN}>{t('modal.gathern')}</option>
               </select>
             </InputWrapper>
+
             <InputWrapper label={t('modal.totalAmount')} error={errors.amount} icon={DollarSign}>
               <input
                 type="text"
@@ -410,6 +414,17 @@ export function AddBookingModal({
                 value={form.amount}
                 onChange={(e) => handleChange('amount', e.target.value)}
                 className={inputClass(errors.amount)}
+              />
+            </InputWrapper>
+
+            <InputWrapper label={t('modal.insurance')} icon={Shield}>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder={t('modal.insurancePlaceholder') || '0'}
+                value={form.insurance}
+                onChange={(e) => handleChange('insurance', e.target.value)}
+                className={inputClass(false)}
               />
             </InputWrapper>
           </div>

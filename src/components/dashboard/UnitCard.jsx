@@ -1,6 +1,6 @@
 // UnitCard.jsx — Unit card for dashboard grid
 
-import { Eye, Plus, MessageCircle, BedDouble, Calendar } from 'lucide-react';
+import { Eye, Plus, MessageCircle, BedDouble, Calendar, Shield } from 'lucide-react';
 import { StatusBadge } from '../shared/StatusBadge';
 import { Button } from '../shared/Button';
 import { UNIT_STATUS } from '../../data/seedData';
@@ -78,7 +78,7 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
                 )}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-500">
+            <div className="flex items-center gap-1.5 text-slate-500 flex-wrap">
               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                 currentTenant.source === 'Gathern'
                   ? 'bg-violet-500/15 text-violet-400'
@@ -89,6 +89,12 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
               <span className="text-xs text-slate-500">
                 SAR {currentTenant.amount.toLocaleString()}
               </span>
+              {Number(currentTenant.insurance) > 0 && (
+                <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <Shield className="w-2.5 h-2.5" />
+                  {t('unit.insurance')}: {Number(currentTenant.insurance).toLocaleString()}
+                </span>
+              )}
             </div>
           </div>
         ) : (
