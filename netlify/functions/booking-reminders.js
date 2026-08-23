@@ -143,20 +143,15 @@ export async function handler(event, context) {
 
       console.log(`[Reminders Cron] 🚀 Sending ${templateName} for Unit ${unitNumber} (Booking: ${reminder.bookingId})`);
 
-      // Build recipient list: all admin phones + booking phone (if valid)
+      // Only send reminders to registered Admin phone numbers (never to guests)
       const recipientPhones = new Set();
       adminPhones.forEach((p) => {
         const clean = String(p || '').replace(/[^0-9]/g, '');
         if (clean.length >= 8) recipientPhones.add(clean);
       });
 
-      if (reminder.phone) {
-        const cleanTenant = String(reminder.phone).replace(/[^0-9]/g, '');
-        if (cleanTenant.length >= 8) recipientPhones.add(cleanTenant);
-      }
-
       if (recipientPhones.size === 0) {
-        console.warn(`[Reminders Cron] ⚠️ No valid recipients for reminder ${reminder.id}`);
+        console.warn(`[Reminders Cron] ⚠️ No registered admin phone numbers to receive reminder for Unit ${unitNumber}`);
       }
 
       for (const cleanPhone of recipientPhones) {
