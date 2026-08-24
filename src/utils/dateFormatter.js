@@ -150,3 +150,30 @@ export function formatSource(source, isArabic = false) {
   }
   return source;
 }
+
+/**
+ * Format payment interval in Arabic or English with proper grammar
+ * @param {number|string} intervalMonths
+ * @param {boolean} isArabic
+ */
+export function formatPaymentInterval(intervalMonths, isArabic = false) {
+  const num = Number(intervalMonths) || 1;
+  if (isArabic) {
+    if (num === 1) return 'شهري (شهر واحد)';
+    if (num === 2) return 'كل شهرين (شهران)';
+    if (num === 3) return 'كل 3 أشهر (ربع سنوي)';
+    if (num === 4) return 'كل 4 أشهر';
+    if (num === 6) return 'كل 6 أشهر (نصف سنوي)';
+    if (num === 12) return 'سنوي (12 شهر)';
+    if (num >= 3 && num <= 10) return `كل ${num} أشهر`;
+    return `كل ${num} شهراً`;
+  }
+  if (num === 1) return 'Monthly (1 Month)';
+  if (num === 2) return 'Every 2 Months';
+  if (num === 3) return 'Every 3 Months (Quarterly)';
+  if (num === 4) return 'Every 4 Months';
+  if (num === 6) return 'Every 6 Months (Semi-Annual)';
+  if (num === 12) return 'Annually (12 Months)';
+  return `Every ${num} Months`;
+}
+

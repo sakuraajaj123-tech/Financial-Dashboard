@@ -44,7 +44,7 @@ import { useTranslation } from 'react-i18next';
 import { useMakkahRentals } from '../../hooks/useMakkahRentals';
 import { MakkahTenantModal } from '../modals/MakkahTenantModal';
 import { Button } from '../shared/Button';
-import { formatBookingDate, formatFullMonthYear, ARABIC_MONTHS, ENGLISH_FULL_MONTHS } from '../../utils/dateFormatter';
+import { formatBookingDate, formatFullMonthYear, formatPaymentInterval, ARABIC_MONTHS, ENGLISH_FULL_MONTHS } from '../../utils/dateFormatter';
 
 /**
  * Format phone number to clean WhatsApp international digits
@@ -579,7 +579,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                         {/* Payment Interval */}
                         <td className="px-5 py-3.5 whitespace-nowrap text-slate-300">
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-[11px] font-medium text-slate-300">
-                            {t(`makkah.intervals.${tenant.paymentIntervalMonths}`)}
+                            {formatPaymentInterval(tenant.paymentIntervalMonths, isArabic)}
                           </span>
                         </td>
 
@@ -982,7 +982,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                     {t('makkah.calendar.intervalLabel')}
                   </span>
                   <span className="font-medium text-slate-300">
-                    {t(`makkah.intervals.${selectedCalendarTenant.paymentIntervalMonths}`)}
+                    {formatPaymentInterval(selectedCalendarTenant.paymentIntervalMonths, isArabic)}
                   </span>
                 </div>
 

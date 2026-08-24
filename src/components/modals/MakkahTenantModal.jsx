@@ -1,17 +1,23 @@
 // MakkahTenantModal.jsx — Modal to Add or Edit Makkah Building Tenants
-// Fields: Name, Phone, Unit Number, Rent Amount, Payment Interval (1, 3, 6, 12 months), Last Paid Date, and Notes.
+// Fields: Name, Phone, Unit Number, Rent Amount, Payment Interval (Preset or Custom months), Last Paid Date, and Notes.
 
-import { useState, useEffect } from 'react';
-import { X, User, Phone, Home, DollarSign, Calendar, Repeat, FileText } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, User, Phone, Home, DollarSign, Calendar, Repeat, FileText, Clock } from 'lucide-react';
 import { Button } from '../shared/Button';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
+import { format, addMonths, parseISO, isValid } from 'date-fns';
+import { formatBookingDate } from '../../utils/dateFormatter';
+
+const PRESET_INTERVALS = [1, 2, 3, 4, 6, 12];
 
 const INTERVAL_OPTIONS = [
-  { value: 1, labelKey: '1' },
-  { value: 3, labelKey: '3' },
-  { value: 6, labelKey: '6' },
-  { value: 12, labelKey: '12' },
+  { value: '1', labelKey: '1' },
+  { value: '2', labelKey: '2' },
+  { value: '3', labelKey: '3' },
+  { value: '4', labelKey: '4' },
+  { value: '6', labelKey: '6' },
+  { value: '12', labelKey: '12' },
+  { value: 'custom', labelKey: 'custom' },
 ];
 
 function InputWrapper({ label, error, icon: Icon, required, children }) {
@@ -34,14 +40,16 @@ export function MakkahTenantModal({
   onClose,
   onSubmit,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const isEditing = Boolean(initialTenant && initialTenant.id);
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
   const [rentAmount, setRentAmount] = useState('');
-  const [paymentIntervalMonths, setPaymentIntervalMonths] = useState(1);
+  const [intervalSelection, setIntervalSelection] = useState('1');
+  const [customMonths, setCustomMonths] = useState('');
   const [lastPaidDate, setLastPaidDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState({});
@@ -54,7 +62,16 @@ export function MakkahTenantModal({
         setPhone(initialTenant.phone || '');
         setUnitNumber(initialTenant.unitNumber || '');
         setRentAmount(initialTenant.rentAmount ? String(initialTenant.rentAmount) : '');
-        setPaymentIntervalMonths(Number(initialTenant.paymentIntervalMonths) || 1);
+        
+        const rawInterval = Number(initialTenant.paymentIntervalMonths) || 1;
+        if (PRESET_INTERVALS.includes(rawInterval)) {
+          setIntervalSelection(String(rawInterval));
+          setCustomMonths('');
+        } else {
+          setIntervalSelection('custom');
+          setCustomMonths(String(rawInterval));
+        }
+
         setLastPaidDate(initialTenant.lastPaidDate || format(new Date(), 'yyyy-MM-dd'));
         setNotes(initialTenant.notes || '');
       } else {
@@ -62,7 +79,8 @@ export function MakkahTenantModal({
         setPhone('');
         setUnitNumber('');
         setRentAmount('');
-        setPaymentIntervalMonths(1);
+        setIntervalSelection('1');
+        setCustomMonths('');
         setLastPaidDate(format(new Date(), 'yyyy-MM-dd'));
         setNotes('');
       }
@@ -70,6 +88,28 @@ export function MakkahTenantModal({
       setIsSubmitting(false);
     }
   }, [isOpen, initialTenant]);
+
+  // Compute effective interval in months for preview and submission
+  const effectiveInterval = useMemo(() => {
+    if (intervalSelection === 'custom') {
+      const num = Number(customMonths);
+      return !isNaN(num) && num > 0 ? num : null;
+    }
+    return Number(intervalSelection) || 1;
+  }, [intervalSelection, customMonths]);
+
+  // Real-time next due date preview
+  const previewDueDateStr = useMemo(() => {
+    if (!lastPaidDate || !effectiveInterval) return null;
+    try {
+      const parsed = parseISO(lastPaidDate);
+      if (!isValid(parsed)) return null;
+      const due = addMonths(parsed, effectiveInterval);
+      return formatBookingDate(due, isArabic);
+    } catch {
+      return null;
+    }
+  }, [lastPaidDate, effectiveInterval, isArabic]);
 
   if (!isOpen) return null;
 
@@ -88,6 +128,12 @@ export function MakkahTenantModal({
     if (!rentAmount || isNaN(numRent) || numRent <= 0) {
       errs.rentAmount = t('makkah.modal.rentRequired');
     }
+    if (intervalSelection === 'custom') {
+      const numCustom = Number(customMonths);
+      if (!customMonths || isNaN(numCustom) || numCustom < 1 || !Number.isInteger(numCustom)) {
+        errs.customMonths = t('makkah.modal.customIntervalRequired');
+      }
+    }
     if (!lastPaidDate) {
       errs.lastPaidDate = t('makkah.modal.dateRequired');
     }
@@ -99,6 +145,8 @@ export function MakkahTenantModal({
     e.preventDefault();
     if (!validate() || isSubmitting) return;
 
+    const finalInterval = intervalSelection === 'custom' ? Number(customMonths) : Number(intervalSelection);
+
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -106,7 +154,7 @@ export function MakkahTenantModal({
         phone: phone.trim(),
         unitNumber: unitNumber.trim(),
         rentAmount: Number(rentAmount),
-        paymentIntervalMonths: Number(paymentIntervalMonths),
+        paymentIntervalMonths: finalInterval,
         lastPaidDate,
         notes: notes.trim(),
       }, initialTenant?.id);
@@ -225,8 +273,18 @@ export function MakkahTenantModal({
               required
             >
               <select
-                value={paymentIntervalMonths}
-                onChange={(e) => setPaymentIntervalMonths(Number(e.target.value))}
+                value={intervalSelection}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setIntervalSelection(val);
+                  if (val !== 'custom') {
+                    setErrors((prev) => {
+                      const copy = { ...prev };
+                      delete copy.customMonths;
+                      return copy;
+                    });
+                  }
+                }}
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer"
               >
                 {INTERVAL_OPTIONS.map((opt) => (
@@ -238,20 +296,68 @@ export function MakkahTenantModal({
             </InputWrapper>
           </div>
 
-          {/* Last Paid Date */}
-          <InputWrapper
-            label={t('makkah.modal.lastPaidDate')}
-            error={errors.lastPaidDate}
-            icon={Calendar}
-            required
-          >
-            <input
-              type="date"
-              value={lastPaidDate}
-              onChange={(e) => setLastPaidDate(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-          </InputWrapper>
+          {/* Custom Months Input when "Custom" is selected */}
+          {intervalSelection === 'custom' && (
+            <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 space-y-1.5 animate-fade-in">
+              <InputWrapper
+                label={t('makkah.modal.customMonthsLabel')}
+                error={errors.customMonths}
+                icon={Repeat}
+                required
+              >
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    step="1"
+                    value={customMonths}
+                    onChange={(e) => {
+                      setCustomMonths(e.target.value);
+                      if (errors.customMonths) {
+                        setErrors((prev) => ({ ...prev, customMonths: null }));
+                      }
+                    }}
+                    placeholder={t('makkah.modal.customMonthsPlaceholder')}
+                    className="w-full bg-slate-950/90 border border-indigo-500/50 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-colors"
+                    autoFocus
+                  />
+                  <span className="absolute right-3 rtl:right-auto rtl:left-3 top-2.5 text-xs font-semibold text-indigo-300">
+                    {t('makkah.intervals.customMonthsSuffix')}
+                  </span>
+                </div>
+              </InputWrapper>
+            </div>
+          )}
+
+          {/* Last Paid Date & Real-time Due Date Preview */}
+          <div className="space-y-2">
+            <InputWrapper
+              label={t('makkah.modal.lastPaidDate')}
+              error={errors.lastPaidDate}
+              icon={Calendar}
+              required
+            >
+              <input
+                type="date"
+                value={lastPaidDate}
+                onChange={(e) => setLastPaidDate(e.target.value)}
+                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+              />
+            </InputWrapper>
+
+            {previewDueDateStr && (
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs animate-fade-in">
+                <span className="flex items-center gap-1.5 text-slate-400">
+                  <Clock className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                  <span>{t('makkah.modal.nextDuePreview')}</span>
+                </span>
+                <span className="font-bold text-indigo-300">
+                  {previewDueDateStr}
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Notes (Optional) */}
           <InputWrapper label={t('makkah.modal.notes')} icon={FileText}>
@@ -289,3 +395,4 @@ export function MakkahTenantModal({
     </div>
   );
 }
+
