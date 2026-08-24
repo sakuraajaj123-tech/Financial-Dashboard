@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageSquare, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft, Sparkles } from 'lucide-react';
+import { MessageSquare, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft, Sparkles, Plus, ChevronLeft, ChevronRight, Images } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
 import { JsonViewer } from './JsonViewer';
@@ -363,9 +363,10 @@ function ReplyBox({ to, onSendSuccess }) {
   const [modalState, setModalState] = useState({ isOpen: false, quickReply: null });
   const { quickReplies, loading: loadingQuickReplies, addQuickReply, updateQuickReply, deleteQuickReply } = useQuickReplies();
 
-  // ── Image preview state ─────────────────────────────────
-  const [imagePreview, setImagePreview] = useState(null); // { file, dataUrl, base64, mimeType }
-  const [caption, setCaption] = useState('');
+  // ── Multi-Image selection & preview state ─────────────────
+  const [selectedImages, setSelectedImages] = useState([]); // [{ id, file, dataUrl, base64, mimeType, caption }]
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   // ── Voice recording state ───────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -442,67 +443,163 @@ function ReplyBox({ to, onSendSuccess }) {
     }
   };
 
-  // ── Image selection + compression ───────────────────────
-  const handleImageSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ── Batch image compression & processing ─────────────────
+  const processImageFiles = async (files) => {
+    const validFiles = Array.from(files || []).filter(f => f && f.type && f.type.startsWith('image/'));
+    if (!validFiles.length) return;
+
+    setIsCompressing(true);
+    setErrorMsg('');
     try {
-      const { base64, mimeType } = await compressImage(file);
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-      setImagePreview({ file, dataUrl, base64, mimeType });
-      setCaption('');
+      const compressedList = await Promise.all(
+        validFiles.map(async (file) => {
+          const { base64, mimeType } = await compressImage(file);
+          const dataUrl = `data:${mimeType};base64,${base64}`;
+          return {
+            id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            file,
+            dataUrl,
+            base64,
+            mimeType,
+            caption: '',
+          };
+        })
+      );
+
+      setSelectedImages(prev => {
+        const next = [...prev, ...compressedList];
+        if (prev.length === 0) setActiveImageIndex(0);
+        return next;
+      });
     } catch (err) {
       console.error('Image compression failed:', err);
       setErrorMsg(t('webhook.imageCompressionFailed'));
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  // ── Image selection from file input ─────────────────────
+  const handleImageSelect = async (e) => {
+    if (e.target.files?.length) {
+      await processImageFiles(e.target.files);
     }
     e.target.value = '';
   };
 
-  const handleCancelImage = () => {
-    setImagePreview(null);
-    setCaption('');
+  // ── Paste handler (supports pasting single or multiple images) ──
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const pastedFiles = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) pastedFiles.push(file);
+      }
+    }
+    if (pastedFiles.length > 0) {
+      e.preventDefault();
+      await processImageFiles(pastedFiles);
+    }
   };
 
-  const handleSendImage = () => {
-    if (!imagePreview || status === 'sending') return;
+  const handleCancelAllImages = () => {
+    setSelectedImages([]);
+    setActiveImageIndex(0);
+  };
+
+  const handleRemoveImage = (indexToRemove, e) => {
+    if (e) e.stopPropagation();
+    setSelectedImages(prev => {
+      const next = prev.filter((_, idx) => idx !== indexToRemove);
+      if (next.length === 0) {
+        setActiveImageIndex(0);
+        return [];
+      }
+      if (activeImageIndex >= next.length) {
+        setActiveImageIndex(next.length - 1);
+      } else if (activeImageIndex === indexToRemove && activeImageIndex > 0) {
+        setActiveImageIndex(activeImageIndex - 1);
+      }
+      return next;
+    });
+  };
+
+  const handleCaptionChange = (val) => {
+    setSelectedImages(prev =>
+      prev.map((item, idx) => (idx === activeImageIndex ? { ...item, caption: val } : item))
+    );
+  };
+
+  // ── Send all selected images sequentially ───────────────
+  const handleSendImages = async () => {
+    if (selectedImages.length === 0 || status === 'sending') return;
     setErrorMsg('');
 
-    const { base64, mimeType, dataUrl } = imagePreview;
-    const captionText = caption;
-    setImagePreview(null);
-    setCaption('');
+    const imagesToSend = [...selectedImages];
+    setSelectedImages([]);
+    setActiveImageIndex(0);
 
-    const optimisticMedia = {
-      mediaType: 'image',
-      mimeType,
-      caption: captionText || null,
-      localObjectUrl: dataUrl,
-    };
-    const tempId = onSendSuccess
-      ? onSendSuccess(to, captionText || t('webhook.captionImage'), null, optimisticMedia, 'optimistic')
-      : null;
+    // 1. Instantly inject optimistic placeholders for all images into the chat thread
+    const optimisticQueue = imagesToSend.map((img) => {
+      const optimisticMedia = {
+        mediaType: 'image',
+        mimeType: img.mimeType,
+        caption: img.caption || null,
+        localObjectUrl: img.dataUrl,
+      };
+      const tempId = onSendSuccess
+        ? onSendSuccess(
+            to,
+            img.caption || t('webhook.captionImage'),
+            null,
+            optimisticMedia,
+            'optimistic'
+          )
+        : null;
+      return { img, tempId };
+    });
 
     setStatus('sending');
-    sendMediaMessage(to, base64, mimeType, 'image', captionText || undefined)
-      .then(res => {
-        setStatus('sent');
+    let hasError = false;
+
+    // 2. Dispatch each image sequentially to maintain exact ordering & prevent race conditions
+    for (let i = 0; i < optimisticQueue.length; i++) {
+      const { img, tempId } = optimisticQueue[i];
+      try {
+        const res = await sendMediaMessage(to, img.base64, img.mimeType, 'image', img.caption || undefined);
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, captionText || t('webhook.captionImage'), res?.messages?.[0]?.id, {
-            mediaType: 'image',
-            mediaId: res?.mediaId,
-            mimeType,
-            caption: captionText || null,
-          }, 'confirm', tempId);
+          onSendSuccess(
+            to,
+            img.caption || t('webhook.captionImage'),
+            res?.messages?.[0]?.id,
+            {
+              mediaType: 'image',
+              mediaId: res?.mediaId,
+              mimeType: img.mimeType,
+              caption: img.caption || null,
+            },
+            'confirm',
+            tempId
+          );
         }
-        setTimeout(() => setStatus('idle'), 3000);
-      })
-      .catch(err => {
-        setStatus('error');
+      } catch (err) {
+        hasError = true;
+        console.error(`Failed to send image ${i + 1}/${optimisticQueue.length}:`, err);
         setErrorMsg(err.message || t('webhook.imageSendFailed'));
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, captionText || t('webhook.captionImage'), null, null, 'fail', tempId);
+          onSendSuccess(to, img.caption || t('webhook.captionImage'), null, null, 'fail', tempId);
         }
-      });
+      }
+    }
+
+    if (!hasError) {
+      setStatus('sent');
+      setTimeout(() => setStatus('idle'), 3000);
+    } else {
+      setStatus('error');
+    }
   };
 
   // ── Voice recording (push-to-talk) ──────────────────────
@@ -632,49 +729,198 @@ function ReplyBox({ to, onSendSuccess }) {
     };
   }, []);
 
-  if (imagePreview) {
+  // ── Render Multi-Image Preview Mode ──────────────────────
+  if (selectedImages.length > 0) {
+    const activeImage = selectedImages[activeImageIndex] || selectedImages[0];
+
     return (
-      <div className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0">
+      <div
+        className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0 flex flex-col gap-2.5"
+        onPaste={handlePaste}
+      >
         {status === 'error' && (
-          <div className="mb-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
+          <div className="px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
             {errorMsg}
           </div>
         )}
-        <div className="relative rounded-2xl overflow-hidden bg-slate-900/60 mb-2">
-          <img
-            src={imagePreview.dataUrl}
-            alt="Preview"
-            className="max-h-48 w-full object-contain bg-slate-950/50"
-          />
+
+        {/* Top Header: Counter & Discard Button */}
+        <div className="flex items-center justify-between text-xs px-1 text-slate-300">
+          <div className="flex items-center gap-1.5 font-medium">
+            <Images className="w-4 h-4 text-emerald-400" />
+            <span>
+              {t('webhook.imageCounter', {
+                current: activeImageIndex + 1,
+                total: selectedImages.length,
+              })}
+            </span>
+            {isCompressing && (
+              <span className="flex items-center gap-1 text-emerald-400 text-[11px] ml-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {t('webhook.processingImages')}
+              </span>
+            )}
+          </div>
           <button
-            onClick={handleCancelImage}
-            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors"
+            type="button"
+            onClick={handleCancelAllImages}
+            className="flex items-center gap-1 text-slate-400 hover:text-rose-400 transition-colors px-2 py-1 rounded-lg hover:bg-white/5 text-xs font-medium"
+            title={t('webhook.discardAll')}
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
+            <span>{t('webhook.discardAll')}</span>
           </button>
         </div>
-        <div className="flex items-end gap-2">
+
+        {/* Main Active Image Viewport */}
+        <div className="relative rounded-2xl overflow-hidden bg-[#111b21] border border-slate-700/60 flex items-center justify-center min-h-[160px] max-h-56 sm:max-h-64 group">
+          {activeImage && (
+            <img
+              src={activeImage.dataUrl}
+              alt={`Preview ${activeImageIndex + 1}`}
+              className="max-h-56 sm:max-h-64 w-full object-contain select-none"
+            />
+          )}
+
+          {/* Previous Image Arrow */}
+          {selectedImages.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setActiveImageIndex(prev => (prev > 0 ? prev - 1 : selectedImages.length - 1))}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-80 group-hover:opacity-100 shadow-md"
+              title="Previous"
+            >
+              <ChevronLeft className="w-5 h-5 rtl:rotate-180" />
+            </button>
+          )}
+
+          {/* Next Image Arrow */}
+          {selectedImages.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setActiveImageIndex(prev => (prev < selectedImages.length - 1 ? prev + 1 : 0))}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-80 group-hover:opacity-100 shadow-md"
+              title="Next"
+            >
+              <ChevronRight className="w-5 h-5 rtl:rotate-180" />
+            </button>
+          )}
+
+          {/* Remove Active Image Button */}
+          <button
+            type="button"
+            onClick={(e) => handleRemoveImage(activeImageIndex, e)}
+            className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/70 hover:bg-rose-600 text-white flex items-center justify-center transition-colors shadow-sm"
+            title={t('webhook.removeImage')}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Thumbnail Carousel Strip */}
+        <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 scrollbar-thin scrollbar-thumb-slate-700">
+          {selectedImages.map((img, idx) => {
+            const isActive = idx === activeImageIndex;
+            return (
+              <div
+                key={img.id || idx}
+                onClick={() => setActiveImageIndex(idx)}
+                className={`relative group/thumb flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden cursor-pointer transition-all border ${
+                  isActive
+                    ? 'ring-2 ring-emerald-400 border-transparent scale-105 shadow-md shadow-emerald-950/40'
+                    : 'border-slate-700/80 opacity-70 hover:opacity-100 hover:border-slate-500'
+                }`}
+              >
+                <img
+                  src={img.dataUrl}
+                  alt={`Thumbnail ${idx + 1}`}
+                  className="w-full h-full object-cover bg-slate-950"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => handleRemoveImage(idx, e)}
+                  className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600/90 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity hover:bg-rose-600 shadow"
+                  title={t('webhook.removeImage')}
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+                {img.caption && (
+                  <span className="absolute bottom-1 left-1 w-2 h-2 rounded-full bg-emerald-400" />
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add More Images Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={status === 'sending' || isCompressing}
+            className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl border border-dashed border-slate-600 hover:border-emerald-400 bg-slate-800/40 hover:bg-[#2a3942] text-slate-400 hover:text-emerald-400 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer disabled:opacity-50"
+            title={t('webhook.addMoreImages')}
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-[9px] font-medium tracking-tight leading-none">
+              {t('webhook.addMoreImages').split(' ')[0]}
+            </span>
+          </button>
+        </div>
+
+        {/* Caption and Send Bar */}
+        <div className="flex items-center gap-2 pt-1">
           <input
             type="text"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            placeholder={t('webhook.addCaptionPlaceholder')}
+            value={activeImage?.caption || ''}
+            onChange={(e) => handleCaptionChange(e.target.value)}
+            placeholder={
+              selectedImages.length > 1
+                ? `${t('webhook.addCaptionPlaceholder')} (${activeImageIndex + 1}/${selectedImages.length})`
+                : t('webhook.addCaptionPlaceholder')
+            }
             className="flex-1 bg-[#2a3942] border-0 rounded-2xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 transition-all"
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendImage(); } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSendImages();
+              }
+            }}
             dir="auto"
           />
           <button
-            onClick={handleSendImage}
-            disabled={status === 'sending'}
-            className="flex-shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all shadow-md"
+            type="button"
+            onClick={handleSendImages}
+            disabled={status === 'sending' || isCompressing}
+            className="flex-shrink-0 relative w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all shadow-md rtl:-scale-x-100"
+            title={
+              selectedImages.length > 1
+                ? t('webhook.sendMultipleImages', { count: selectedImages.length })
+                : t('webhook.sendImage')
+            }
           >
-            {status === 'sending' ? (
+            {status === 'sending' || isCompressing ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Send className="w-4 h-4 ml-0.5 rtl:-scale-x-100" />
+              <>
+                <Send className="w-4 h-4 ml-0.5" />
+                {selectedImages.length > 1 && (
+                  <span className="absolute -top-1 -right-1 rtl:-right-auto rtl:-left-1 px-1.5 py-0.2 bg-emerald-400 text-slate-950 rounded-full text-[10px] font-bold font-mono shadow-sm">
+                    {selectedImages.length}
+                  </span>
+                )}
+              </>
             )}
           </button>
         </div>
+
+        {/* Hidden multi-file input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleImageSelect}
+        />
       </div>
     );
   }
@@ -712,7 +958,10 @@ function ReplyBox({ to, onSendSuccess }) {
   }
 
   return (
-    <div className="bg-[#1f2c34] border-t border-slate-700/50 p-2.5 sm:p-3 flex-shrink-0 relative">
+    <div
+      className="bg-[#1f2c34] border-t border-slate-700/50 p-2.5 sm:p-3 flex-shrink-0 relative"
+      onPaste={handlePaste}
+    >
       {/* Quick Replies Overlay Panel */}
       <QuickRepliesPanel
         isOpen={showQuickReplies}
@@ -817,17 +1066,22 @@ function ReplyBox({ to, onSendSuccess }) {
         type="file"
         ref={fileInputRef}
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handleImageSelect}
       />
       <div className="flex items-end gap-2">
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={status === 'sending'}
+          disabled={status === 'sending' || isCompressing}
           className="flex-shrink-0 w-10 h-10 rounded-full bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-slate-200 flex items-center justify-center transition-all"
           title={t('webhook.sendImage')}
         >
-          <ImagePlus className="w-5 h-5" />
+          {isCompressing ? (
+            <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+          ) : (
+            <ImagePlus className="w-5 h-5" />
+          )}
         </button>
 
         {/* Quick Replies Toggle Button */}
@@ -854,6 +1108,7 @@ function ReplyBox({ to, onSendSuccess }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={t('webhook.typePlaceholder')}
           disabled={status === 'sending'}
           className="flex-1 bg-[#2a3942] border-0 rounded-2xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500/30 transition-all disabled:opacity-50 min-h-[44px] max-h-32"
