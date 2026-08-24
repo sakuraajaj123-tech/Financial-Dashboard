@@ -44,7 +44,7 @@ import { useTranslation } from 'react-i18next';
 import { useMakkahRentals } from '../../hooks/useMakkahRentals';
 import { MakkahTenantModal } from '../modals/MakkahTenantModal';
 import { Button } from '../shared/Button';
-import { formatBookingDate, formatFullMonthYear } from '../../utils/dateFormatter';
+import { formatBookingDate, formatFullMonthYear, ARABIC_MONTHS, ENGLISH_FULL_MONTHS } from '../../utils/dateFormatter';
 
 /**
  * Format phone number to clean WhatsApp international digits
@@ -210,14 +210,16 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
       return;
     }
 
-    const formattedDueDate = formatBookingDate(tenant.nextDueDate, isArabic);
-    const amountStr = tenant.rentAmount ? tenant.rentAmount.toLocaleString() : '0';
+    const currentMonthIndex = new Date().getMonth();
+    const currentMonthName = isArabic
+      ? ARABIC_MONTHS[currentMonthIndex]
+      : ENGLISH_FULL_MONTHS[currentMonthIndex];
 
     let message = '';
     if (isArabic) {
-      message = `السلام عليكم ورحمة الله وبركاته، الأخ/الأخت ${tenant.name} المحترم،\nنود تذكيركم بموعد استحقاق إيجار الشقة رقم (${tenant.unitNumber}) في عمارة مكة بقيمة (${amountStr} ريال).\nتاريخ الاستحقاق: ${formattedDueDate}.\nشاكرين ومقدرين حسن تعاونكم.`;
+      message = `رسالة تذكير\n\nأخي الفاضل/ ${tenant.name}\n\nالسلام عليكم ورحمة الله وبركاته.\n\nأود إشعار سيادتكم بأن موعد سداد الدفعه قد حل مع نهاية الشهر الحالي *${currentMonthName}*\n\nآمل اﻹطلاع والتكرم بالتحويل بصفه عاجله.\n\nولكم فائق التحيه.\n\nوالسلام عليكم\n\nأخوك\nأبو أدهم.`;
     } else {
-      message = `Hello ${tenant.name},\nThis is a friendly reminder regarding the rent for Unit #${tenant.unitNumber} in Makkah Building for the amount of SAR ${amountStr}.\nDue date: ${formattedDueDate}.\nThank you for your cooperation.`;
+      message = `Payment Reminder\n\nDear ${tenant.name},\n\nPeace be upon you and God's mercy and blessings.\n\nI would like to inform you that the payment is due with the end of the current month *${currentMonthName}*.\n\nKindly review and arrange the transfer urgently.\n\nBest regards,\n\nYours,\nAbu Adham.`;
     }
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;

@@ -565,7 +565,7 @@ const resources = {
           dateRequired: 'Last paid date is required',
         },
         whatsapp: {
-          reminderMessage: 'Hello {{name}}, this is a friendly reminder regarding the rent for Unit #{{unit}} in Makkah Building for the amount of SAR {{amount}}. Due date: {{dueDate}}. Thank you for your cooperation.',
+          reminderMessage: 'Payment Reminder\n\nDear {{name}},\n\nPeace be upon you and God\'s mercy and blessings.\n\nI would like to inform you that the payment is due with the end of the current month *{{month}}*.\n\nKindly review and arrange the transfer urgently.\n\nBest regards,\n\nYours,\nAbu Adham.',
         },
       },
     },
@@ -1131,7 +1131,7 @@ const resources = {
           dateRequired: 'تاريخ آخر سداد مطلوب',
         },
         whatsapp: {
-          reminderMessage: 'السلام عليكم ورحمة الله وبركاته، الأخ/الأخت {{name}} المحترم، نود تذكيركم بموعد استحقاق إيجار الشقة رقم ({{unit}}) في عمارة مكة بقيمة ({{amount}} ريال). تاريخ الاستحقاق: {{dueDate}}. شاكرين ومقدرين حسن تعاونكم.',
+          reminderMessage: 'رسالة تذكير\n\nأخي الفاضل/ {{name}}\n\nالسلام عليكم ورحمة الله وبركاته.\n\nأود إشعار سيادتكم بأن موعد سداد الدفعه قد حل مع نهاية الشهر الحالي *{{month}}*\n\nآمل اﻹطلاع والتكرم بالتحويل بصفه عاجله.\n\nولكم فائق التحيه.\n\nوالسلام عليكم\n\nأخوك\nأبو أدهم.',
         },
       },
     },
