@@ -6,7 +6,7 @@ import { Button } from '../shared/Button';
 import { BOOKING_SOURCES } from '../../data/seedData';
 import { useTranslation } from 'react-i18next';
 import { BookingCalendarPicker } from './BookingCalendarPicker';
-import { parseISO, isBefore, isAfter, startOfDay } from 'date-fns';
+import { parseISO, isBefore, isAfter, startOfDay, addDays, differenceInCalendarDays } from 'date-fns';
 
 const ENTRY_REMINDER_OPTIONS = [
   { value: 15, labelEn: '15 minutes before', labelAr: 'قبل 15 دقيقة' },
@@ -81,55 +81,81 @@ function hasOverlap(checkIn, checkOut, bookings, excludeBookingId = null) {
 
 // ─── Automated Pricing Matrix ──────────────────────────────────────────────────
 
-export function calculateSuggestedPricing(unitNumber, source, checkInDate) {
+function getDailyRate(uNum, isGathern, dayOfWeek) {
+  const isWeekend = dayOfWeek === 4 || dayOfWeek === 5; // Thursday (4) or Friday (5)
+
+  if (uNum >= 1 && uNum <= 5) {
+    if (isGathern) {
+      return isWeekend ? 279 : 244;
+    } else {
+      return isWeekend ? 330 : 270;
+    }
+  } else if (uNum === 6) {
+    if (isGathern) {
+      return isWeekend ? 135 : 126;
+    } else {
+      return 140; // Direct: 140 (All days)
+    }
+  } else if (uNum === 7) {
+    if (isGathern) {
+      return isWeekend ? 118 : 109;
+    } else {
+      return isWeekend ? 150 : 130;
+    }
+  } else if (uNum === 8) {
+    if (isGathern) {
+      return isWeekend ? 102 : 84;
+    } else {
+      return isWeekend ? 120 : 100;
+    }
+  }
+  return null;
+}
+
+function getInsuranceAmount(uNum) {
+  if (uNum >= 1 && uNum <= 5) return 300;
+  if (uNum === 6) return 200;
+  if (uNum === 7) return 200;
+  if (uNum === 8) return 150;
+  return null;
+}
+
+export function calculateSuggestedPricing(unitNumber, source, checkInDate, checkOutDate) {
   const uNum = Number(unitNumber);
   if (!uNum) return { price: null, insurance: null };
 
-  const isWeekend = (() => {
-    if (!checkInDate) return false;
-    try {
-      const day = parseISO(checkInDate).getDay();
-      return day === 5 || day === 6; // Friday (5) or Saturday (6)
-    } catch {
-      return false;
-    }
-  })();
-
   const isGathern = source === BOOKING_SOURCES.GATHERN;
+  const insurance = getInsuranceAmount(uNum);
 
-  let price = null;
-  let insurance = null;
+  if (!checkInDate) {
+    // Default 1-night weekday rate if no dates chosen yet
+    const price = getDailyRate(uNum, isGathern, 0); // 0 = Sunday (weekday)
+    return { price, insurance };
+  }
 
-  if (uNum >= 1 && uNum <= 5) {
-    insurance = 300;
-    if (isGathern) {
-      price = isWeekend ? 279 : 244;
-    } else {
-      price = isWeekend ? 330 : 270;
-    }
-  } else if (uNum === 6) {
-    insurance = 200;
-    if (isGathern) {
-      price = isWeekend ? 135 : 126;
-    } else {
-      price = 140; // Direct: 140 (All days)
-    }
-  } else if (uNum === 7) {
-    insurance = 200;
-    if (isGathern) {
-      price = isWeekend ? 118 : 109;
-    } else {
-      price = isWeekend ? 150 : 130;
-    }
-  } else if (uNum === 8) {
-    insurance = 150;
-    if (isGathern) {
-      price = isWeekend ? 102 : 84;
-    } else {
-      price = isWeekend ? 120 : 100;
+  const startDate = parseISO(checkInDate);
+
+  if (checkOutDate) {
+    const endDate = parseISO(checkOutDate);
+    const nights = differenceInCalendarDays(endDate, startDate);
+
+    if (nights > 0) {
+      let totalPrice = 0;
+      for (let i = 0; i < nights; i++) {
+        const currentDay = addDays(startDate, i);
+        const dayOfWeek = currentDay.getDay();
+        const dailyRate = getDailyRate(uNum, isGathern, dayOfWeek);
+        if (dailyRate !== null) {
+          totalPrice += dailyRate;
+        }
+      }
+      return { price: totalPrice, insurance };
     }
   }
 
+  // Single night if checkOut is not provided or not after checkIn
+  const dayOfWeek = startDate.getDay();
+  const price = getDailyRate(uNum, isGathern, dayOfWeek);
   return { price, insurance };
 }
 
@@ -180,10 +206,11 @@ export function AddBookingModal({
     unitId: form.unitId,
     source: form.source,
     checkIn: form.checkIn,
+    checkOut: form.checkOut,
     isInitial: true,
   });
 
-  // Auto-fill price & insurance based on Unit, Source, and Check-In Date
+  // Auto-fill price & insurance based on Unit, Source, Check-In Date, and Check-Out Date
   useEffect(() => {
     // In edit mode, do not overwrite saved booking values on initial mount
     if (isEdit && prevPricingDepsRef.current.isInitial) {
@@ -194,15 +221,17 @@ export function AddBookingModal({
     const hasDepsChanged =
       prevPricingDepsRef.current.unitId !== form.unitId ||
       prevPricingDepsRef.current.source !== form.source ||
-      prevPricingDepsRef.current.checkIn !== form.checkIn;
+      prevPricingDepsRef.current.checkIn !== form.checkIn ||
+      prevPricingDepsRef.current.checkOut !== form.checkOut;
 
-    // In edit mode, only auto-fill if the user actively changes unit, source, or checkIn
+    // In edit mode, only auto-fill if the user actively changes unit, source, or dates
     if (isEdit && !hasDepsChanged) return;
 
     prevPricingDepsRef.current = {
       unitId: form.unitId,
       source: form.source,
       checkIn: form.checkIn,
+      checkOut: form.checkOut,
       isInitial: false,
     };
 
@@ -210,14 +239,19 @@ export function AddBookingModal({
     const unitNum = targetUnit?.number || (form.unitId ? String(form.unitId).replace(/[^0-9]/g, '') : null);
 
     if (unitNum) {
-      const { price, insurance } = calculateSuggestedPricing(unitNum, form.source, form.checkIn);
+      const { price, insurance } = calculateSuggestedPricing(
+        unitNum,
+        form.source,
+        form.checkIn,
+        form.checkOut
+      );
       setForm((prev) => ({
         ...prev,
         ...(price !== null ? { amount: String(price) } : {}),
         ...(insurance !== null ? { insurance: String(insurance) } : {}),
       }));
     }
-  }, [form.unitId, form.source, form.checkIn, units, preselectedUnit, isEdit]);
+  }, [form.unitId, form.source, form.checkIn, form.checkOut, units, preselectedUnit, isEdit]);
 
   // Derive the bookings of the currently selected unit for the calendar
   const selectedUnit = units.find((u) => u.id === form.unitId) || preselectedUnit || null;
