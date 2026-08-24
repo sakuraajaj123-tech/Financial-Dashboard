@@ -434,6 +434,123 @@ function buildLeafResponsePayload(responseText, isCustomerService = false) {
   };
 }
 
+// ── Helper: Forward incoming guest messages to Admin WhatsApp with smart cost-saving fallback ──
+async function forwardMessageToAdmin({ phoneNumberId, accessToken, senderPhone, guestName, messageText }) {
+  const adminPhone = process.env.ADMIN_PHONE_NUMBER;
+  if (!adminPhone) {
+    console.log('[Admin Forwarder] ℹ️ ADMIN_PHONE_NUMBER not configured. Skipping admin notification.');
+    return;
+  }
+
+  // 1. Loop Prevention: Prevent infinite loops if message originates from admin number
+  if (senderPhone === process.env.ADMIN_PHONE_NUMBER) {
+    console.log(`[Admin Forwarder] 🛑 Loop prevention: sender ${senderPhone} equals ADMIN_PHONE_NUMBER. Skipping forwarding.`);
+    return;
+  }
+
+  const cleanAdminPhone = adminPhone.replace(/[^0-9]/g, '');
+  const cleanSenderPhone = String(senderPhone || '').replace(/[^0-9]/g, '');
+  if (cleanAdminPhone && cleanSenderPhone === cleanAdminPhone) {
+    console.log(`[Admin Forwarder] 🛑 Loop prevention: cleaned sender ${cleanSenderPhone} equals cleaned admin phone. Skipping forwarding.`);
+    return;
+  }
+
+  const endpoint = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  const targetAdmin = cleanAdminPhone || adminPhone;
+
+  // ── Attempt 1 (Free-Form Text): Free within 24h window ────────────────────
+  const alertBody = `🔔 *تنبيه رسالة جديدة من عميل*\n\n👤 *الاسم:* ${guestName}\n📱 *الرقم:* ${senderPhone}\n💬 *الرسالة:* ${messageText}`;
+
+  const textPayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: targetAdmin,
+    type: 'text',
+    text: {
+      body: alertBody,
+    },
+  };
+
+  console.log(`[Admin Forwarder] 🚀 Attempt 1 (Free-Form Text): Sending alert for sender ${senderPhone} to admin ${targetAdmin}...`);
+
+  try {
+    const textRes = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(textPayload),
+    });
+
+    const textData = await textRes.json();
+
+    if (textRes.ok && !textData.error) {
+      console.log(`[Admin Forwarder] ✅ Attempt 1 Succeeded: Free-form text alert delivered to admin (${targetAdmin})`, textData);
+      return textData;
+    }
+
+    // Inspect if error is Meta code 131047 (24-hour customer service window expired / re-engagement required)
+    const errorCode = textData?.error?.code;
+    const errorDetails = textData?.error?.message || textData?.error?.error_data?.details || '';
+    const isWindowExpired = errorCode === 131047 || String(errorDetails).includes('131047') || String(errorDetails).includes('24 hours');
+
+    if (isWindowExpired) {
+      console.warn(`[Admin Forwarder] ⚠️ Attempt 1 failed with Meta Error Code 131047 (24-hour service window expired). Triggering fallback utility template...`);
+    } else {
+      console.warn(`[Admin Forwarder] ⚠️ Attempt 1 failed [Code: ${errorCode}]: ${errorDetails}. Attempting template fallback...`);
+    }
+
+    // ── Attempt 2 (Utility Template Fallback): Guaranteed delivery outside 24h window ──
+    const templateName = process.env.ADMIN_ALERT_TEMPLATE_NAME || 'admin_guest_notification';
+    console.log(`[Admin Forwarder] 🚀 Attempt 2 (Utility Template Fallback): Sending template "${templateName}" to admin ${targetAdmin}...`);
+
+    const templatePayload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: targetAdmin,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: {
+          code: process.env.ADMIN_ALERT_TEMPLATE_LANG || 'ar',
+        },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: String(guestName || 'عميل') },
+              { type: 'text', text: String(senderPhone || '') },
+              { type: 'text', text: String(messageText || 'لا يوجد نص') },
+            ],
+          },
+        ],
+      },
+    };
+
+    const templateRes = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(templatePayload),
+    });
+
+    const templateData = await templateRes.json();
+
+    if (templateRes.ok && !templateData.error) {
+      console.log(`[Admin Forwarder] ✅ Attempt 2 Succeeded: Fallback utility template delivered to admin (${targetAdmin})`, templateData);
+      return templateData;
+    } else {
+      console.error(`[Admin Forwarder] ❌ Attempt 2 Failed: Template fallback could not be delivered to admin (${targetAdmin}):`, JSON.stringify(templateData, null, 2));
+      return templateData;
+    }
+  } catch (err) {
+    console.error(`[Admin Forwarder] ❌ Error in forwardMessageToAdmin:`, err.message);
+  }
+}
+
 // ── Helper: Extract human-readable text summary for Firestore chat logs ─────
 function extractBotText(payload) {
   if (!payload) return '[رسالة تلقائية]';
@@ -457,8 +574,8 @@ function extractBotText(payload) {
 // ── Webhook Handler ─────────────────────────────────────────────────────────
 export async function handler(event, context) {
   const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || process.env.VITE_META_VERIFY_TOKEN;
-  const PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID || process.env.VITE_META_PHONE_NUMBER_ID || '1244951792043253';
-  const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || process.env.VITE_META_ACCESS_TOKEN;
+  const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID || process.env.VITE_META_PHONE_NUMBER_ID || '1244951792043253';
+  const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN || process.env.VITE_META_ACCESS_TOKEN;
 
   // ── 1. GET: Webhook Handshake Verification ────────────────────────────────
   if (event.httpMethod === 'GET') {
@@ -596,12 +713,15 @@ export async function handler(event, context) {
               }
             }
 
+            const guestName = contacts?.[0]?.profile?.name || contactName || senderPhone;
+            const messageText = caption || incomingText || msg.text?.body || '';
+
             // 1. Save incoming user message to Firestore
             await saveMessage(senderPhone, {
               sender: 'user',
-              text: caption || incomingText,
+              text: messageText,
               messageId: msg.id,
-              contactName,
+              contactName: guestName,
               mediaId,
               mediaType,
               mimeType,
@@ -609,7 +729,20 @@ export async function handler(event, context) {
               mediaUrl,
             });
 
-            // 2. Process Auto-Reply (if not paused by admin)
+            // 2. Automated Admin Notification (Smart Forwarder with Loop Prevention & Fallback)
+            try {
+              await forwardMessageToAdmin({
+                phoneNumberId: PHONE_NUMBER_ID,
+                accessToken: ACCESS_TOKEN,
+                senderPhone,
+                guestName,
+                messageText,
+              });
+            } catch (notifyErr) {
+              console.error('[Admin Forwarder] ❌ Non-blocking error in admin notification:', notifyErr.message);
+            }
+
+            // 3. Process Auto-Reply (if not paused by admin)
             if (botPaused) {
               console.log(`[Auto-Reply] ⏸️ Skipped auto-reply for +${senderPhone} (24-hour agent takeover active)`);
             } else {
