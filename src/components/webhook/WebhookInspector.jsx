@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageSquare, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft } from 'lucide-react';
+import { MessageSquare, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft, Sparkles } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
 import { JsonViewer } from './JsonViewer';
 import { useTranslation } from 'react-i18next';
 import { db } from '../../lib/firebase';
 import { collection, query, orderBy, onSnapshot, limit, startAfter, getDocs } from 'firebase/firestore';
+import { useQuickReplies } from '../../hooks/useQuickReplies';
+import { QuickRepliesPanel } from './QuickRepliesPanel';
+import { QuickRepliesModal } from './QuickRepliesModal';
 
 // ── Voice Message Audio Player Component ──────────────────────────────────────
 function VoiceMessagePlayer({ src, isOutgoing, mimeType }) {
@@ -355,6 +358,11 @@ function ReplyBox({ to, onSendSuccess }) {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // ── Quick Replies state ──────────────────────────────────
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [modalState, setModalState] = useState({ isOpen: false, quickReply: null });
+  const { quickReplies, loading: loadingQuickReplies, addQuickReply, updateQuickReply, deleteQuickReply } = useQuickReplies();
+
   // ── Image preview state ─────────────────────────────────
   const [imagePreview, setImagePreview] = useState(null); // { file, dataUrl, base64, mimeType }
   const [caption, setCaption] = useState('');
@@ -366,6 +374,33 @@ function ReplyBox({ to, onSendSuccess }) {
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   const streamRef = useRef(null);
+
+  // ── Direct Send for Quick Replies ───────────────────────
+  const handleSendQuickReplyDirect = async (textToSend) => {
+    if (!textToSend?.trim() || status === 'sending') return;
+    const msgText = textToSend.trim();
+    setErrorMsg('');
+
+    const tempId = onSendSuccess ? onSendSuccess(to, msgText, null, null, 'optimistic') : null;
+    setStatus('sending');
+
+    try {
+      const res = await sendFreeTextReply(to, msgText);
+      setStatus('sent');
+      if (onSendSuccess && tempId) {
+        onSendSuccess(to, msgText, res?.messages?.[0]?.id, null, 'confirm', tempId);
+      }
+      setTimeout(() => setStatus('idle'), 3000);
+      return res;
+    } catch (err) {
+      setStatus('error');
+      setErrorMsg(err.message || 'Failed to send');
+      if (onSendSuccess && tempId) {
+        onSendSuccess(to, msgText, null, null, 'fail', tempId);
+      }
+      throw err;
+    }
+  };
 
   // ── Send text message ───────────────────────────────────
   const handleSend = () => {
@@ -677,12 +712,107 @@ function ReplyBox({ to, onSendSuccess }) {
   }
 
   return (
-    <div className="bg-[#1f2c34] border-t border-slate-700/50 p-3 flex-shrink-0">
+    <div className="bg-[#1f2c34] border-t border-slate-700/50 p-2.5 sm:p-3 flex-shrink-0 relative">
+      {/* Quick Replies Overlay Panel */}
+      <QuickRepliesPanel
+        isOpen={showQuickReplies}
+        onClose={() => setShowQuickReplies(false)}
+        quickReplies={quickReplies}
+        loading={loadingQuickReplies}
+        activePhone={to}
+        onUse={(content) => {
+          setText(content);
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            setTimeout(() => {
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+                textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+              }
+            }, 50);
+          }
+        }}
+        onSend={handleSendQuickReplyDirect}
+        onAddNew={() => setModalState({ isOpen: true, quickReply: null })}
+        onEdit={(item) => setModalState({ isOpen: true, quickReply: item })}
+        onDelete={deleteQuickReply}
+      />
+
+      {/* Quick Replies Create/Edit Modal */}
+      <QuickRepliesModal
+        isOpen={modalState.isOpen}
+        onClose={() => setModalState({ isOpen: false, quickReply: null })}
+        quickReply={modalState.quickReply}
+        onSave={async ({ title, content }) => {
+          if (modalState.quickReply?.id) {
+            await updateQuickReply(modalState.quickReply.id, { title, content });
+          } else {
+            await addQuickReply({ title, content });
+          }
+        }}
+      />
+
       {status === 'error' && (
         <div className="mb-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
           {errorMsg}
         </div>
       )}
+
+      {/* Quick Replies Chips Bar */}
+      {quickReplies.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setShowQuickReplies(prev => !prev)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 transition-all ${
+              showQuickReplies
+                ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                : 'bg-[#2a3942] hover:bg-[#35464f] text-emerald-400 border border-emerald-500/30'
+            }`}
+            title={t('webhook.quickReplies')}
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>{t('webhook.quickReplies')}</span>
+            <span className="text-[10px] px-1 py-0.2 rounded-full bg-slate-900/60 font-mono">
+              {quickReplies.length}
+            </span>
+          </button>
+
+          {quickReplies.slice(0, 5).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setText(item.content);
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.style.height = 'auto';
+                      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+                    }
+                  }, 50);
+                }
+              }}
+              className="px-2.5 py-1 rounded-full bg-[#2a3942]/80 hover:bg-[#35464f] text-slate-300 hover:text-white text-xs whitespace-nowrap shrink-0 border border-slate-700/50 transition-colors flex items-center gap-1"
+              title={item.content}
+            >
+              <span>{item.title}</span>
+            </button>
+          ))}
+
+          {quickReplies.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setShowQuickReplies(true)}
+              className="px-2 py-1 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs shrink-0"
+            >
+              +{quickReplies.length - 5}
+            </button>
+          )}
+        </div>
+      )}
+
       <input
         type="file"
         ref={fileInputRef}
@@ -698,6 +828,24 @@ function ReplyBox({ to, onSendSuccess }) {
           title={t('webhook.sendImage')}
         >
           <ImagePlus className="w-5 h-5" />
+        </button>
+
+        {/* Quick Replies Toggle Button */}
+        <button
+          type="button"
+          onClick={() => setShowQuickReplies(prev => !prev)}
+          disabled={status === 'sending'}
+          className={`relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center ${
+            showQuickReplies
+              ? 'bg-emerald-500 text-slate-950 shadow-md'
+              : 'bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-emerald-400'
+          }`}
+          title={t('webhook.quickReplies')}
+        >
+          <Sparkles className="w-5 h-5" />
+          {quickReplies.length > 0 && !showQuickReplies && (
+            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#1f2c34]" />
+          )}
         </button>
 
         <textarea
