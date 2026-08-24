@@ -22,7 +22,7 @@ import {
   isBefore,
   isAfter,
 } from 'date-fns';
-import { useUnits } from './useUnits';
+import { useUnits, getBookingRevenueForMonth } from './useUnits';
 
 const TRANSACTIONS_COLLECTION = 'transactions';
 
@@ -179,21 +179,15 @@ export function useFinance() {
     return () => unsubscribe();
   }, []);
 
-  // ─── Dynamic Property Income strictly isolated for selected month ──────────
+  // ─── Dynamic Property Income strictly isolated for selected month (Prorated Daily) ──
   const monthPropertyIncome = useMemo(() => {
-    const monthStart = new Date(selectedYear, selectedMonthIndex, 1, 0, 0, 0);
-    const monthEnd = new Date(selectedYear, selectedMonthIndex + 1, 0, 23, 59, 59, 999);
-
-    return units.reduce((total, unit) => {
+    const rawSum = units.reduce((total, unit) => {
       const unitBookingsSum = (unit.bookings || []).reduce((sum, b) => {
-        if (!b.checkIn) return sum;
-        const checkIn = parseISO(b.checkIn);
-        const checkOut = b.checkOut ? parseISO(b.checkOut) : checkIn;
-        const overlaps = isBefore(checkIn, monthEnd) && isAfter(checkOut, monthStart);
-        return overlaps ? sum + (Number(b.amount) || 0) : sum;
+        return sum + getBookingRevenueForMonth(b, selectedYear, selectedMonthIndex);
       }, 0);
       return total + unitBookingsSum;
     }, 0);
+    return Math.round(rawSum);
   }, [units, selectedYear, selectedMonthIndex]);
 
   // ─── Filtered Transactions for the Selected Month (Recurring Engine) ──────

@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { seedUnits, UNIT_STATUS, BOOKING_SOURCES } from '../data/seedData';
-import { isWithinInterval, parseISO, isAfter, isBefore, format } from 'date-fns';
+import { isWithinInterval, parseISO, isAfter, isBefore, format, addDays, differenceInCalendarDays } from 'date-fns';
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -21,6 +21,43 @@ const UNITS_COLLECTION = 'units';
 const REMINDERS_COLLECTION = 'pending_reminders';
 
 // ─── Pure helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Calculates the exact prorated revenue of a booking for a specific target month (0-indexed month).
+ * Iterates through each night of the booking and allocates the proportion of nights falling in this month.
+ * @param {Object} booking - { checkIn, checkOut, amount }
+ * @param {number} targetYear - e.g. 2026
+ * @param {number} targetMonthIndex - 0-indexed (0 = Jan, 7 = Aug, 8 = Sep)
+ * @returns {number} Prorated revenue for the target month
+ */
+export function getBookingRevenueForMonth(booking, targetYear, targetMonthIndex) {
+  if (!booking || !booking.checkIn) return 0;
+  const amount = Number(booking.amount) || 0;
+  if (amount <= 0) return 0;
+
+  const startDate = parseISO(booking.checkIn);
+  const endDate = booking.checkOut ? parseISO(booking.checkOut) : startDate;
+  const totalNights = differenceInCalendarDays(endDate, startDate);
+
+  if (totalNights <= 0) {
+    // Single-day booking: attribute to checkIn month
+    if (startDate.getFullYear() === targetYear && startDate.getMonth() === targetMonthIndex) {
+      return amount;
+    }
+    return 0;
+  }
+
+  let matchingNights = 0;
+  for (let i = 0; i < totalNights; i++) {
+    const nightDate = addDays(startDate, i);
+    if (nightDate.getFullYear() === targetYear && nightDate.getMonth() === targetMonthIndex) {
+      matchingNights++;
+    }
+  }
+
+  if (matchingNights === 0) return 0;
+  return (matchingNights / totalNights) * amount;
+}
 
 function computeCurrentBooking(unit) {
   const today = new Date();
@@ -141,8 +178,8 @@ export function useUnits() {
     const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const currentYear = now.getFullYear();
+    const currentMonthIdx = now.getMonth();
 
     let monthlyRevenue = 0;
     let gathernBookings = 0;
@@ -150,17 +187,13 @@ export function useUnits() {
     let totalBookings = 0;
 
     units.forEach((unit) => {
-      unit.bookings.forEach((b) => {
-        const checkIn = parseISO(b.checkIn);
-        const checkOut = parseISO(b.checkOut);
-
-        totalBookings++;
-        if (b.source === BOOKING_SOURCES.GATHERN) gathernBookings++;
-        else directBookings++;
-
-        const overlaps = isBefore(checkIn, monthEnd) && isAfter(checkOut, monthStart);
-        if (overlaps) {
-          monthlyRevenue += b.amount;
+      (unit.bookings || []).forEach((b) => {
+        const proratedRev = getBookingRevenueForMonth(b, currentYear, currentMonthIdx);
+        if (proratedRev > 0) {
+          totalBookings++;
+          if (b.source === BOOKING_SOURCES.GATHERN) gathernBookings++;
+          else directBookings++;
+          monthlyRevenue += proratedRev;
         }
       });
     });
@@ -170,7 +203,7 @@ export function useUnits() {
 
     return {
       totalUnits, occupiedUnits, availableUnits, occupancyRate,
-      monthlyRevenue, gathernBookings, directBookings,
+      monthlyRevenue: Math.round(monthlyRevenue), gathernBookings, directBookings,
       gathernPct, directPct, totalBookings,
     };
   }, [units]);
@@ -386,15 +419,37 @@ export function useUnits() {
   // ─── Get monthly revenue data per unit (for charts) ───────────────────
   const getUnitMonthlyRevenue = useCallback((unit) => {
     const months = {};
-    unit.bookings.forEach((b) => {
-      const d = parseISO(b.checkIn);
-      const isoMonth = format(d, 'yyyy-MM');
-      if (!months[isoMonth]) {
-        months[isoMonth] = { isoMonth, date: b.checkIn, month: format(d, 'MMM yy'), revenue: 0 };
+    (unit.bookings || []).forEach((b) => {
+      if (!b.checkIn) return;
+      const amount = Number(b.amount) || 0;
+      if (amount <= 0) return;
+
+      const startDate = parseISO(b.checkIn);
+      const endDate = b.checkOut ? parseISO(b.checkOut) : startDate;
+      const totalNights = differenceInCalendarDays(endDate, startDate);
+
+      if (totalNights <= 0) {
+        const isoMonth = format(startDate, 'yyyy-MM');
+        if (!months[isoMonth]) {
+          months[isoMonth] = { isoMonth, date: b.checkIn, month: format(startDate, 'MMM yy'), revenue: 0 };
+        }
+        months[isoMonth].revenue += amount;
+        return;
       }
-      months[isoMonth].revenue += b.amount;
+
+      const nightlyRate = amount / totalNights;
+      for (let i = 0; i < totalNights; i++) {
+        const nightDate = addDays(startDate, i);
+        const isoMonth = format(nightDate, 'yyyy-MM');
+        if (!months[isoMonth]) {
+          months[isoMonth] = { isoMonth, date: format(nightDate, 'yyyy-MM-dd'), month: format(nightDate, 'MMM yy'), revenue: 0 };
+        }
+        months[isoMonth].revenue += nightlyRate;
+      }
     });
-    return Object.values(months).sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
+    return Object.values(months)
+      .map((item) => ({ ...item, revenue: Math.round(item.revenue) }))
+      .sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
   }, []);
 
   // ─── Get source split for a unit ──────────────────────────────────────
@@ -413,16 +468,38 @@ export function useUnits() {
   const getPortfolioMonthlyRevenue = useCallback(() => {
     const months = {};
     units.forEach((unit) => {
-      unit.bookings.forEach((b) => {
-        const d = parseISO(b.checkIn);
-        const isoMonth = format(d, 'yyyy-MM');
-        if (!months[isoMonth]) {
-          months[isoMonth] = { isoMonth, date: b.checkIn, month: format(d, 'MMM yy'), revenue: 0 };
+      (unit.bookings || []).forEach((b) => {
+        if (!b.checkIn) return;
+        const amount = Number(b.amount) || 0;
+        if (amount <= 0) return;
+
+        const startDate = parseISO(b.checkIn);
+        const endDate = b.checkOut ? parseISO(b.checkOut) : startDate;
+        const totalNights = differenceInCalendarDays(endDate, startDate);
+
+        if (totalNights <= 0) {
+          const isoMonth = format(startDate, 'yyyy-MM');
+          if (!months[isoMonth]) {
+            months[isoMonth] = { isoMonth, date: b.checkIn, month: format(startDate, 'MMM yy'), revenue: 0 };
+          }
+          months[isoMonth].revenue += amount;
+          return;
         }
-        months[isoMonth].revenue += b.amount;
+
+        const nightlyRate = amount / totalNights;
+        for (let i = 0; i < totalNights; i++) {
+          const nightDate = addDays(startDate, i);
+          const isoMonth = format(nightDate, 'yyyy-MM');
+          if (!months[isoMonth]) {
+            months[isoMonth] = { isoMonth, date: format(nightDate, 'yyyy-MM-dd'), month: format(nightDate, 'MMM yy'), revenue: 0 };
+          }
+          months[isoMonth].revenue += nightlyRate;
+        }
       });
     });
-    return Object.values(months).sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
+    return Object.values(months)
+      .map((item) => ({ ...item, revenue: Math.round(item.revenue) }))
+      .sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
   }, [units]);
 
   // ─── Get source split across all units (portfolio charts) ────────────
