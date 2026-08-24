@@ -1,6 +1,6 @@
 // Sidebar.jsx — App navigation sidebar
 
-import { Building2, LayoutDashboard, BarChart3, Wallet, Webhook, Bot, Bell, X } from 'lucide-react';
+import { Building2, LayoutDashboard, BarChart3, Wallet, Webhook, Bot, Bell, X, Landmark } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 
@@ -10,6 +10,7 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
 
   const navItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard'), id: 'dashboard' },
+    { icon: Landmark, label: t('nav.makkahRentals'), id: 'makkah-rentals' },
     { icon: BarChart3, label: t('nav.analytics'), id: 'analytics' },
     { icon: Wallet, label: t('nav.finance'), id: 'finance' },
     { icon: Bell, label: t('nav.reminders'), id: 'reminders' },
