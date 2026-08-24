@@ -20,6 +20,7 @@ import {
   startOfDay,
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { formatFullMonthYear } from '../../utils/dateFormatter';
 
 /**
  * BookingCalendarPicker
@@ -106,10 +107,7 @@ export function BookingCalendarPicker({
   }
 
   const monthLabel = useMemo(() => {
-    return new Intl.DateTimeFormat(isArabic ? 'ar-SA' : 'en-US', {
-      month: 'long',
-      year: 'numeric',
-    }).format(viewMonth);
+    return formatFullMonthYear(viewMonth, isArabic);
   }, [viewMonth, isArabic]);
 
   const dayHeaders = isArabic

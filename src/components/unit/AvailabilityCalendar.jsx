@@ -14,6 +14,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { formatFullMonthYear, formatSource } from '../../utils/dateFormatter';
 
 export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
   const { t, i18n } = useTranslation();
@@ -43,10 +44,7 @@ export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
   }
 
   const monthLabel = useMemo(() => {
-    return new Intl.DateTimeFormat(isArabic ? 'ar-SA' : 'en-US', {
-      month: 'long',
-      year: 'numeric',
-    }).format(month);
+    return formatFullMonthYear(month, isArabic);
   }, [month, isArabic]);
 
   const dayNames = isArabic
@@ -107,7 +105,7 @@ export function AvailabilityCalendar({ bookings = [], month = new Date() }) {
               } ${today ? 'ring-1 ring-indigo-500/60' : ''}`}
               title={
                 booking
-                  ? `${booking.tenant} (${booking.source})`
+                  ? `${booking.tenant} (${formatSource(booking.source, isArabic)})`
                   : inMonth
                   ? t('calendar.available')
                   : ''

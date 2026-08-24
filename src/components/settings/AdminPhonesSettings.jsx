@@ -29,7 +29,8 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { formatDateTime } from '../../utils/dateFormatter';
 
 const SETTINGS_DOC_REF = doc(db, 'settings', 'global_settings');
 const REMINDERS_COLLECTION_REF = collection(db, 'pending_reminders');
@@ -477,7 +478,7 @@ export function AdminPhonesSettings() {
                       </p>
                       <p className="font-mono text-xs font-medium text-slate-200">
                         {triggerDate
-                          ? format(triggerDate, 'MMM d, yyyy · hh:mm a')
+                          ? formatDateTime(triggerDate, isArabic)
                           : item.triggerTime}
                       </p>
                     </div>

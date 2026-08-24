@@ -1,10 +1,12 @@
 // AnalyticsTab.jsx — Unit-level analytics with Recharts
 
+import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import { formatMonthYear, formatSource } from '../../utils/dateFormatter';
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6'];
 
@@ -22,27 +24,47 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-function PieTooltip({ active, payload }) {
+function PieTooltip({ active, payload, isArabic }) {
   const { t } = useTranslation();
   if (!active || !payload?.length) return null;
-  const count = payload[0].value;
+  const item = payload[0];
+  const count = item.value;
   const bookingLabel = count === 1 ? t('analytics.bookingSingle') : t('analytics.bookingPlural');
+  const sourceName = formatSource(item.name, isArabic);
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
       <p className="text-sm font-semibold text-white">
-        {payload[0].name}: {count} {bookingLabel}
+        {sourceName}: {count} {bookingLabel}
       </p>
-      <p className="text-xs text-slate-400">{payload[0].payload.pct}%</p>
+      <p className="text-xs text-slate-400">{item.payload.pct}%</p>
     </div>
   );
 }
 
-export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
-  const { t } = useTranslation();
+export function AnalyticsTab({ unit, monthlyRevenue = [], sourceSplit = [] }) {
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+
   const totalRevenue = unit.bookings.reduce((sum, b) => sum + b.amount, 0);
   const avgRevenue = unit.bookings.length > 0
     ? Math.round(totalRevenue / unit.bookings.length)
     : 0;
+
+  // Localize month labels in monthly revenue chart
+  const localizedMonthlyRevenue = useMemo(() => {
+    return monthlyRevenue.map((item) => ({
+      ...item,
+      monthLabel: formatMonthYear(item.date || item.month, isArabic),
+    }));
+  }, [monthlyRevenue, isArabic]);
+
+  // Localize source names in source split
+  const localizedSourceSplit = useMemo(() => {
+    return sourceSplit.map((item) => ({
+      ...item,
+      displayName: formatSource(item.name, isArabic),
+    }));
+  }, [sourceSplit, isArabic]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -63,14 +85,14 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
       {/* Monthly Revenue Chart */}
       <div className="rounded-2xl bg-slate-800/40 border border-slate-700/40 p-5">
         <h4 className="text-sm font-semibold text-slate-200 mb-4">{t('analytics.monthlyRevenueTrend')}</h4>
-        {monthlyRevenue.length === 0 ? (
+        {localizedMonthlyRevenue.length === 0 ? (
           <p className="text-center text-slate-500 text-sm py-8">{t('analytics.noRevenue')}</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={monthlyRevenue} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
+            <BarChart data={localizedMonthlyRevenue} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis
-                dataKey="month"
+                dataKey="monthLabel"
                 tick={{ fill: '#64748b', fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
@@ -102,14 +124,14 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
       {/* Source Split Pie Chart */}
       <div className="rounded-2xl bg-slate-800/40 border border-slate-700/40 p-5">
         <h4 className="text-sm font-semibold text-slate-200 mb-4">{t('analytics.clientAcquisitionSource')}</h4>
-        {sourceSplit.length === 0 ? (
+        {localizedSourceSplit.length === 0 ? (
           <p className="text-center text-slate-500 text-sm py-8">{t('analytics.noSources')}</p>
         ) : (
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <ResponsiveContainer width={180} height={180}>
               <PieChart>
                 <Pie
-                  data={sourceSplit}
+                  data={localizedSourceSplit}
                   cx="50%"
                   cy="50%"
                   innerRadius={50}
@@ -117,26 +139,26 @@ export function AnalyticsTab({ unit, monthlyRevenue, sourceSplit }) {
                   paddingAngle={3}
                   dataKey="value"
                 >
-                  {sourceSplit.map((entry, index) => (
+                  {localizedSourceSplit.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip content={<PieTooltip />} />
+                <Tooltip content={<PieTooltip isArabic={isArabic} />} />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex-1 space-y-3 min-w-0">
-              {sourceSplit.map((entry, index) => (
+              {localizedSourceSplit.map((entry, index) => (
                 <div key={entry.name} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: PIE_COLORS[index] }}
                     />
-                    <span className="text-sm text-slate-300 truncate">{entry.name}</span>
+                    <span className="text-sm text-slate-300 truncate">{entry.displayName}</span>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className="text-sm font-bold text-white">{entry.pct}%</span>
-                    <span className="text-xs text-slate-500 ml-1">({entry.value})</span>
+                    <span className="text-xs text-slate-500 ms-1">({entry.value})</span>
                   </div>
                 </div>
               ))}

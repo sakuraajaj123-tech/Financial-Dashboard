@@ -1,14 +1,15 @@
 // PortfolioAnalyticsView.jsx — Full property analytics view
 
+import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
 import { KPIGrid } from '../dashboard/KPIGrid';
 import { useTranslation } from 'react-i18next';
-import { UNIT_STATUS } from '../../data/seedData';
 import { StatusBadge } from '../shared/StatusBadge';
 import { Building2 } from 'lucide-react';
+import { formatMonthYear, formatSource } from '../../utils/dateFormatter';
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6'];
 
@@ -26,17 +27,19 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-function PieTooltip({ active, payload }) {
+function PieTooltip({ active, payload, isArabic }) {
   const { t } = useTranslation();
   if (!active || !payload?.length) return null;
-  const count = payload[0].value;
+  const item = payload[0];
+  const count = item.value;
   const bookingLabel = count === 1 ? t('analytics.bookingSingle') : t('analytics.bookingPlural');
+  const sourceName = formatSource(item.name, isArabic);
   return (
     <div className="bg-slate-900/95 border border-slate-700/80 rounded-xl px-4 py-3 shadow-2xl backdrop-blur-md">
       <p className="text-sm font-bold text-white">
-        {payload[0].name}: {count} {bookingLabel}
+        {sourceName}: {count} {bookingLabel}
       </p>
-      <p className="text-xs text-indigo-400 font-semibold mt-0.5">{payload[0].payload.pct}%</p>
+      <p className="text-xs text-indigo-400 font-semibold mt-0.5">{item.payload.pct}%</p>
     </div>
   );
 }
@@ -48,12 +51,29 @@ export function PortfolioAnalyticsView({
   sourceSplit = [],
   onSelectUnit,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
 
   const totalAllRevenue = units.reduce(
     (total, u) => total + u.bookings.reduce((sum, b) => sum + b.amount, 0),
     0
   );
+
+  // Localize month labels in monthly revenue chart
+  const localizedMonthlyRevenue = useMemo(() => {
+    return monthlyRevenue.map((item) => ({
+      ...item,
+      monthLabel: formatMonthYear(item.date || item.month, isArabic),
+    }));
+  }, [monthlyRevenue, isArabic]);
+
+  // Localize source names in source split
+  const localizedSourceSplit = useMemo(() => {
+    return sourceSplit.map((item) => ({
+      ...item,
+      displayName: formatSource(item.name, isArabic),
+    }));
+  }, [sourceSplit, isArabic]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -78,14 +98,14 @@ export function PortfolioAnalyticsView({
             </div>
           </div>
 
-          {monthlyRevenue.length === 0 ? (
+          {localizedMonthlyRevenue.length === 0 ? (
             <p className="text-center text-slate-500 text-sm py-12">{t('analytics.noRevenueAvailable')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthlyRevenue} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
+              <BarChart data={localizedMonthlyRevenue} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} vertical={false} />
                 <XAxis
-                  dataKey="month"
+                  dataKey="monthLabel"
                   tick={{ fill: '#94a3b8', fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
@@ -123,7 +143,7 @@ export function PortfolioAnalyticsView({
             <p className="text-xs text-slate-400 mt-0.5">{t('analytics.sourceDistributionSubtitle')}</p>
           </div>
 
-          {sourceSplit.length === 0 ? (
+          {localizedSourceSplit.length === 0 ? (
             <p className="text-center text-slate-500 text-sm py-12">{t('analytics.noSourcesAvailable')}</p>
           ) : (
             <div className="my-auto py-4">
@@ -131,7 +151,7 @@ export function PortfolioAnalyticsView({
                 <ResponsiveContainer width={180} height={180}>
                   <PieChart>
                     <Pie
-                      data={sourceSplit}
+                      data={localizedSourceSplit}
                       cx="50%"
                       cy="50%"
                       innerRadius={52}
@@ -139,17 +159,17 @@ export function PortfolioAnalyticsView({
                       paddingAngle={4}
                       dataKey="value"
                     >
-                      {sourceSplit.map((entry, index) => (
+                      {localizedSourceSplit.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip content={<PieTooltip />} />
+                    <Tooltip content={<PieTooltip isArabic={isArabic} />} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
 
               <div className="space-y-3 mt-4">
-                {sourceSplit.map((entry, index) => (
+                {localizedSourceSplit.map((entry, index) => (
                   <div
                     key={entry.name}
                     className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/40"
@@ -160,7 +180,7 @@ export function PortfolioAnalyticsView({
                         style={{ backgroundColor: PIE_COLORS[index] }}
                       />
                       <span className="text-sm font-medium text-slate-300 truncate">
-                        {entry.name}
+                        {entry.displayName}
                       </span>
                     </div>
                     <div className="text-right flex-shrink-0">

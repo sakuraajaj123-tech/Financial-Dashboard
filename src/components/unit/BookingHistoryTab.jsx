@@ -1,16 +1,13 @@
-// BookingHistoryTab.jsx — Chronological booking log with WhatsApp action and Booking Details view
+// BookingHistoryTab.jsx — Chronological booking log with details view & localized dates/sources
 
-import { useState } from 'react';
-import { MessageCircle, Phone, CheckCircle, Loader2, Trash2, Eye, Shield } from 'lucide-react';
-import { Button } from '../shared/Button';
-import { sendWhatsAppConfirmation } from '../../api/whatsapp';
-import { simulateWebhookEvent } from '../../api/webhook';
-import { format, parseISO } from 'date-fns';
+import { Phone, Trash2, Eye, Shield } from 'lucide-react';
+import { parseISO } from 'date-fns';
 import { BOOKING_SOURCES } from '../../data/seedData';
 import { useTranslation } from 'react-i18next';
+import { formatBookingDate, formatSource } from '../../utils/dateFormatter';
 
-function SourceTag({ source }) {
-  const isGathern = source === BOOKING_SOURCES.GATHERN;
+function SourceTag({ source, isArabic }) {
+  const isGathern = source === BOOKING_SOURCES.GATHERN || String(source).toLowerCase().includes('gathern');
   return (
     <span
       className={`inline-flex items-center text-xs px-2 py-0.5 rounded-md font-medium ${
@@ -19,47 +16,8 @@ function SourceTag({ source }) {
           : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
       }`}
     >
-      {source}
+      {formatSource(source, isArabic)}
     </span>
-  );
-}
-
-function WhatsAppButton({ booking, unitNumber }) {
-  const { t } = useTranslation();
-  const [state, setState] = useState('idle'); // idle | loading | sent
-
-  const handleSend = async () => {
-    setState('loading');
-    try {
-      const result = await sendWhatsAppConfirmation(booking, unitNumber);
-      // Simulate webhook event after send
-      simulateWebhookEvent(result.messages[0].id, booking.phone);
-      setState('sent');
-      setTimeout(() => setState('idle'), 4000);
-    } catch (err) {
-      setState('idle');
-    }
-  };
-
-  if (state === 'sent') {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
-        <CheckCircle className="w-3.5 h-3.5" />
-        {t('history.sent')}
-      </span>
-    );
-  }
-
-  return (
-    <Button
-      variant="whatsapp"
-      size="xs"
-      icon={state === 'loading' ? Loader2 : MessageCircle}
-      loading={state === 'loading'}
-      onClick={handleSend}
-    >
-      <span className="hidden sm:inline">WhatsApp</span>
-    </Button>
   );
 }
 
@@ -136,26 +94,26 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 text-slate-400 text-xs">
                       <Phone className="w-3 h-3" />
-                      <span className="font-mono">{booking.phone}</span>
+                      <span className="font-mono" dir="ltr">{booking.phone}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <SourceTag source={booking.source} />
+                    <SourceTag source={booking.source} isArabic={isArabic} />
                   </td>
-                  <td className="px-4 py-3 text-slate-300 text-xs">
-                    {format(parseISO(booking.checkIn), 'MMM d, yyyy')}
+                  <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
+                    {formatBookingDate(booking.checkIn, isArabic)}
                   </td>
-                  <td className="px-4 py-3 text-slate-300 text-xs">
-                    {format(parseISO(booking.checkOut), 'MMM d, yyyy')}
+                  <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
+                    {formatBookingDate(booking.checkOut, isArabic)}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-semibold text-emerald-400">
+                    <span className="text-sm font-semibold text-emerald-400 whitespace-nowrap">
                       SAR {booking.amount.toLocaleString()}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     {hasInsurance ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 whitespace-nowrap">
                         <Shield className="w-3 h-3 text-amber-400" />
                         SAR {Number(booking.insurance).toLocaleString()}
                       </span>
@@ -173,7 +131,6 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                         <Eye className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">{t('history.details')}</span>
                       </button>
-                      <WhatsAppButton booking={booking} unitNumber={unit.number} />
                       <button
                         onClick={() => onDeleteBooking && onDeleteBooking(unit.id, booking.id, booking.phone)}
                         title={t('history.delete')}
@@ -208,18 +165,18 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold text-slate-200">{booking.tenantName}</p>
-                  <p className="text-xs text-slate-500 font-mono">{booking.phone}</p>
+                  <p className="text-xs text-slate-500 font-mono" dir="ltr">{booking.phone}</p>
                 </div>
-                <SourceTag source={booking.source} />
+                <SourceTag source={booking.source} isArabic={isArabic} />
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
                 <div>
                   <p className="text-slate-600">{t('history.checkIn')}</p>
-                  <p className="text-slate-300">{format(parseISO(booking.checkIn), 'MMM d, yyyy')}</p>
+                  <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkIn, isArabic)}</p>
                 </div>
                 <div>
                   <p className="text-slate-600">{t('history.checkOut')}</p>
-                  <p className="text-slate-300">{format(parseISO(booking.checkOut), 'MMM d, yyyy')}</p>
+                  <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkOut, isArabic)}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -241,7 +198,6 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                     <Eye className="w-3.5 h-3.5" />
                     <span>{t('history.details')}</span>
                   </button>
-                  <WhatsAppButton booking={booking} unitNumber={unit.number} />
                   <button
                     onClick={() => onDeleteBooking && onDeleteBooking(unit.id, booking.id, booking.phone)}
                     title={t('history.delete')}
@@ -259,4 +215,3 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
     </div>
   );
 }
-

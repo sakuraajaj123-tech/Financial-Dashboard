@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageSquare, Wifi, WifiOff, Copy, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft } from 'lucide-react';
-import { sendFreeTextReply, sendTermsTemplate, sendMediaMessage } from '../../api/whatsapp';
+import { MessageSquare, Check, Send, Loader2, User, FileText, Trash2, Bot, Mic, ImagePlus, X, Play, Pause, Download, ArrowLeft } from 'lucide-react';
+import { sendFreeTextReply, sendMediaMessage } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
 import { JsonViewer } from './JsonViewer';
 import { useTranslation } from 'react-i18next';
@@ -293,89 +293,7 @@ function transformFirestoreMessage(doc, phone) {
   };
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
 
-function SendTermsPanel({ onSendSuccess }) {
-  const { t } = useTranslation();
-  const [phone, setPhone] = useState('');
-  const [variable, setVariable] = useState('');
-  const [status, setStatus] = useState('idle');
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const handleSend = async () => {
-    if (!phone.trim() || !variable.trim() || status === 'sending') return;
-    const targetPhone = phone.trim();
-    const varVal = variable.trim();
-    setStatus('sending');
-    setErrorMsg('');
-    try {
-      const res = await sendTermsTemplate(targetPhone, varVal);
-      setStatus('sent');
-      if (onSendSuccess) {
-        onSendSuccess(targetPhone, `[Terms Template: ${varVal}]`, res?.messages?.[0]?.id);
-      }
-      setTimeout(() => setStatus('idle'), 3000);
-      setPhone('');
-      setVariable('');
-    } catch (err) {
-      setStatus('error');
-      setErrorMsg(err.message || 'Failed to send template');
-    }
-  };
-
-  return (
-    <div className="bg-slate-900/80 border border-slate-700/50 rounded-2xl p-4 shadow-xl flex-shrink-0 relative overflow-hidden">
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-5 h-5 text-indigo-400" />
-        <h3 className="font-bold text-slate-200">{t('webhook.termsTitle')}</h3>
-      </div>
-      {status === 'error' && (
-        <div className="mb-3 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
-          {errorMsg}
-        </div>
-      )}
-      <div className="flex flex-col sm:flex-row items-end gap-3">
-        <div className="flex-1 w-full">
-          <label className="block text-xs text-slate-400 mb-1">{t('webhook.termsPhoneLabel')}</label>
-          <input
-            type="text"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder={t('webhook.termsPhonePlaceholder')}
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500 outline-none transition-colors"
-            dir="ltr"
-          />
-        </div>
-        <div className="w-full sm:w-32">
-          <label className="block text-xs text-slate-400 mb-1">{t('webhook.termsNumberLabel')}</label>
-          <input
-            type="number"
-            min="1"
-            max="10"
-            value={variable}
-            onChange={(e) => setVariable(e.target.value)}
-            placeholder={t('webhook.termsNumberPlaceholder')}
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500 outline-none transition-colors text-center"
-            dir="ltr"
-          />
-        </div>
-        <button
-          onClick={handleSend}
-          disabled={!phone.trim() || !variable.trim() || status === 'sending'}
-          className="w-full sm:w-auto px-6 py-2 h-[38px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all shrink-0"
-        >
-          {status === 'sending' ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : status === 'sent' ? (
-            <><Check className="w-4 h-4" /> {t('webhook.termsSent')}</>
-          ) : (
-            <><Send className="w-4 h-4" /> {t('webhook.termsSendBtn')}</>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Image compression utility ────────────────────────────────────────────────
 function compressImage(file, maxDim = 1080, quality = 0.8) {
@@ -1057,8 +975,6 @@ export function WebhookInspector() {
 
   const [chats, setChats] = useState({});
   const [activePhone, setActivePhone] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const [copiedUrl, setCopiedUrl] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -1081,8 +997,6 @@ export function WebhookInspector() {
   const prevNewestMsgIdRef = useRef(null);
 
   const topic = getWebhookTopic();
-  const netlifyBaseUrl = window.location.origin;
-  const webhookUrl = `${netlifyBaseUrl}/api/webhook?topic=${topic}`;
 
   const activeChat = activePhone ? chats[activePhone] : null;
   const activeHistorical = activePhone ? (historicalMessages[activePhone] || []) : [];
@@ -1612,10 +1526,7 @@ export function WebhookInspector() {
   }, [chatsLimit, sendBrowserNotification, t]);
 
   useEffect(() => {
-    setConnectionStatus('connecting');
     const eventSource = new EventSource(`https://ntfy.sh/${topic}/sse`);
-    eventSource.onopen  = () => setConnectionStatus('connected');
-    eventSource.onerror = () => setConnectionStatus('disconnected');
     eventSource.onmessage = (event) => {
       try {
         const rawData = JSON.parse(event.data);
@@ -1634,12 +1545,6 @@ export function WebhookInspector() {
     }
   }, []);
 
-  const copyWebhookUrl = () => {
-    navigator.clipboard.writeText(webhookUrl);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2000);
-  };
-
   const chatList = Object.entries(chats)
     .map(([phone, data]) => ({
       phone,
@@ -1650,68 +1555,6 @@ export function WebhookInspector() {
 
   return (
     <div className="w-full h-[calc(100vh-80px)] max-h-[calc(100vh-80px)] overflow-hidden flex flex-col space-y-2.5 sm:space-y-3 animate-fade-in max-w-6xl mx-auto min-h-0">
-      {/* Connection Banner */}
-      <div className="bg-gradient-to-r from-indigo-500/10 to-violet-500/10 border border-indigo-500/20 rounded-2xl p-3 sm:p-4 shadow-xl relative overflow-hidden flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-shrink-0">
-              {t('webhook.liveLink')}
-            </h3>
-            <span className={`sm:hidden inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border flex-shrink-0 ${
-              connectionStatus === 'connected'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : connectionStatus === 'connecting'
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse'
-                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-            }`}>
-              {connectionStatus === 'connected' ? (
-                <><Wifi className="w-3 h-3" /> {t('webhook.connectionActive')}</>
-              ) : connectionStatus === 'connecting' ? (
-                <><Wifi className="w-3 h-3 animate-spin" /> {t('webhook.connecting')}</>
-              ) : (
-                <><WifiOff className="w-3 h-3" /> {t('webhook.disconnected')}</>
-              )}
-            </span>
-          </div>
-
-          <div className="flex-1 flex items-center gap-2 min-w-0">
-            <input
-              type="text"
-              readOnly
-              value={webhookUrl}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono text-indigo-300 outline-none select-all text-left min-w-0"
-              dir="ltr"
-            />
-            <button
-              onClick={copyWebhookUrl}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all flex-shrink-0"
-            >
-              {copiedUrl ? <><Check className="w-3.5 h-3.5" /> <span className="hidden xs:inline">{t('webhook.copied')}</span></> : <><Copy className="w-3.5 h-3.5" /> <span className="hidden xs:inline">{t('webhook.copyUrl')}</span></>}
-            </button>
-          </div>
-
-          <span className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border flex-shrink-0 ${
-            connectionStatus === 'connected'
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : connectionStatus === 'connecting'
-              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse'
-              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-          }`}>
-            {connectionStatus === 'connected' ? (
-              <><Wifi className="w-3.5 h-3.5" /> {t('webhook.connectionActive')}</>
-            ) : connectionStatus === 'connecting' ? (
-              <><Wifi className="w-3.5 h-3.5 animate-spin" /> {t('webhook.connecting')}</>
-            ) : (
-              <><WifiOff className="w-3.5 h-3.5" /> {t('webhook.disconnected')}</>
-            )}
-          </span>
-        </div>
-      </div>
-
-      <SendTermsPanel onSendSuccess={(phone, text, messageId, media) => {
-        addOptimisticMessage(phone, text, media);
-      }} />
-
       {/* Chat Interface Container */}
       <div className="w-full flex-1 min-h-0 flex flex-col md:flex-row bg-slate-950/50 backdrop-blur-md border border-slate-700/50 rounded-2xl overflow-hidden shadow-xl relative">
 

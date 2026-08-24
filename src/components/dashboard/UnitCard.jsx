@@ -4,11 +4,13 @@ import { Eye, Plus, MessageCircle, BedDouble, Calendar, Shield } from 'lucide-re
 import { StatusBadge } from '../shared/StatusBadge';
 import { Button } from '../shared/Button';
 import { UNIT_STATUS } from '../../data/seedData';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { parseISO, differenceInDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { formatBookingDate, formatSource } from '../../utils/dateFormatter';
 
 export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onWhatsApp }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const isOccupied = unit.status === UNIT_STATUS.OCCUPIED;
   const daysUntilCheckout = currentTenant
     ? differenceInDays(parseISO(currentTenant.checkOut), new Date())
@@ -70,9 +72,9 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
             <div className={`flex items-center gap-1.5 ${urgencyColor}`}>
               <Calendar className="w-3 h-3 flex-shrink-0" />
               <span className="text-xs">
-                {t('unit.checkout')}: {format(parseISO(currentTenant.checkOut), 'MMM d, yyyy')}
+                {t('unit.checkout')}: {formatBookingDate(currentTenant.checkOut, isArabic)}
                 {daysUntilCheckout !== null && (
-                  <span className="ml-1 font-semibold">
+                  <span className="ms-1 font-semibold">
                     ({daysUntilCheckout <= 0 ? t('unit.today') : t('unit.daysLeft', { count: daysUntilCheckout })})
                   </span>
                 )}
@@ -80,11 +82,11 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
             </div>
             <div className="flex items-center gap-1.5 text-slate-500 flex-wrap">
               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                currentTenant.source === 'Gathern'
+                currentTenant.source === 'Gathern' || String(currentTenant.source).toLowerCase().includes('gathern')
                   ? 'bg-violet-500/15 text-violet-400'
                   : 'bg-blue-500/15 text-blue-400'
               }`}>
-                {currentTenant.source}
+                {formatSource(currentTenant.source, isArabic)}
               </span>
               <span className="text-xs text-slate-500">
                 SAR {currentTenant.amount.toLocaleString()}

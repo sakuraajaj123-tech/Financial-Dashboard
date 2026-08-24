@@ -387,10 +387,14 @@ export function useUnits() {
   const getUnitMonthlyRevenue = useCallback((unit) => {
     const months = {};
     unit.bookings.forEach((b) => {
-      const key = format(parseISO(b.checkIn), 'MMM yy');
-      months[key] = (months[key] || 0) + b.amount;
+      const d = parseISO(b.checkIn);
+      const isoMonth = format(d, 'yyyy-MM');
+      if (!months[isoMonth]) {
+        months[isoMonth] = { isoMonth, date: b.checkIn, month: format(d, 'MMM yy'), revenue: 0 };
+      }
+      months[isoMonth].revenue += b.amount;
     });
-    return Object.entries(months).map(([month, revenue]) => ({ month, revenue }));
+    return Object.values(months).sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
   }, []);
 
   // ─── Get source split for a unit ──────────────────────────────────────
@@ -410,11 +414,15 @@ export function useUnits() {
     const months = {};
     units.forEach((unit) => {
       unit.bookings.forEach((b) => {
-        const key = format(parseISO(b.checkIn), 'MMM yy');
-        months[key] = (months[key] || 0) + b.amount;
+        const d = parseISO(b.checkIn);
+        const isoMonth = format(d, 'yyyy-MM');
+        if (!months[isoMonth]) {
+          months[isoMonth] = { isoMonth, date: b.checkIn, month: format(d, 'MMM yy'), revenue: 0 };
+        }
+        months[isoMonth].revenue += b.amount;
       });
     });
-    return Object.entries(months).map(([month, revenue]) => ({ month, revenue }));
+    return Object.values(months).sort((a, b) => a.isoMonth.localeCompare(b.isoMonth));
   }, [units]);
 
   // ─── Get source split across all units (portfolio charts) ────────────

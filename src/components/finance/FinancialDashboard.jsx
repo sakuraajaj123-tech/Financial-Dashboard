@@ -26,6 +26,7 @@ import {
 import { Button } from '../shared/Button';
 import { useTranslation } from 'react-i18next';
 import { CATEGORY_COLORS } from '../../hooks/useFinance';
+import { formatBookingDate } from '../../utils/dateFormatter';
 
 function FinancialTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -53,7 +54,8 @@ export function FinancialDashboard({
   financeData,
   onOpenAddModal,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const {
     transactions = [],
     totalPropertyIncome = 0,
@@ -458,7 +460,7 @@ export function FinancialDashboard({
                       <td className="px-5 py-3.5 text-slate-300 whitespace-nowrap font-medium">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          {tx.date || '—'}
+                          {formatBookingDate(tx.date, isArabic)}
                         </div>
                       </td>
 
