@@ -1,6 +1,6 @@
 // UnitCard.jsx — Unit card for dashboard grid
 
-import { Eye, Plus, MessageCircle, BedDouble, Calendar, Shield } from 'lucide-react';
+import { Eye, Plus, Calendar, Shield } from 'lucide-react';
 import { StatusBadge } from '../shared/StatusBadge';
 import { Button } from '../shared/Button';
 import { UNIT_STATUS } from '../../data/seedData';
@@ -8,7 +8,7 @@ import { parseISO, differenceInDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { formatBookingDate, formatSource } from '../../utils/dateFormatter';
 
-export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onWhatsApp }) {
+export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking }) {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
   const isOccupied = unit.status === UNIT_STATUS.OCCUPIED;
@@ -43,16 +43,8 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
 
       <div className="p-4">
         {/* Header row */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-bold text-white">{t('unit.unit')} {unit.number}</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5 text-slate-500">
-              <BedDouble className="w-3 h-3" />
-              <span className="text-xs">{unit.bedrooms} {t('unit.bed')} • {t('unit.floor')} {unit.floor}</span>
-            </div>
-          </div>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <span className="text-xl font-bold text-white">{t('unit.unit')} {unit.number}</span>
           <StatusBadge status={unit.status} size="sm" />
         </div>
 
@@ -122,14 +114,6 @@ export function UnitCard({ unit, currentTenant, onViewDetails, onAddBooking, onW
             icon={Plus}
             onClick={() => onAddBooking(unit)}
           />
-          {isOccupied && currentTenant && (
-            <Button
-              variant="whatsapp"
-              size="xs"
-              icon={MessageCircle}
-              onClick={() => onWhatsApp(currentTenant, unit.number)}
-            />
-          )}
         </div>
       </div>
     </div>

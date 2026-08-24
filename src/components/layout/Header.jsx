@@ -1,6 +1,6 @@
 // Header.jsx — Top navigation bar
 
-import { Plus, Search, Bell, Calendar, Menu } from 'lucide-react';
+import { Plus, Calendar, Menu } from 'lucide-react';
 import { Button } from '../shared/Button';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -53,22 +53,6 @@ export function Header({
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Search bar — hidden on mobile */}
-          <div className="hidden md:flex items-center gap-2 bg-slate-800/60 border border-slate-700/50 rounded-lg px-3 py-2">
-            <Search className="w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder={t('header.search')}
-              className="bg-transparent text-xs text-slate-300 placeholder-slate-500 outline-none w-36 lg:w-48"
-            />
-          </div>
-
-          {/* Notifications */}
-          <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-          </button>
-
           {/* Add Action CTA */}
           {handleAdd && (
             <Button

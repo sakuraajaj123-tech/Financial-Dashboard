@@ -16,8 +16,6 @@ import { BotMenuSettings } from './components/settings/BotMenuSettings';
 import { AdminPhonesSettings } from './components/settings/AdminPhonesSettings';
 import { useUnits } from './hooks/useUnits';
 import { useFinance } from './hooks/useFinance';
-import { sendWhatsAppConfirmation } from './api/whatsapp';
-import { simulateWebhookEvent } from './api/webhook';
 
 export default function App() {
   const { t } = useTranslation();
@@ -98,15 +96,6 @@ export default function App() {
 
   const handleSaveTransaction = async (transactionData) => {
     await financeData.addTransaction(transactionData);
-  };
-
-  const handleQuickWhatsApp = async (booking, unitNumber) => {
-    try {
-      const res = await sendWhatsAppConfirmation(booking, unitNumber);
-      simulateWebhookEvent(res.messages[0].id, booking.phone);
-    } catch (err) {
-      console.error('Failed to send WhatsApp from dashboard', err);
-    }
   };
 
   // ─── Mobile Sidebar State ──────────────────────────────────────────────────
@@ -231,7 +220,6 @@ export default function App() {
                     currentTenant={getCurrentTenant(unit)}
                     onViewDetails={handleViewUnit}
                     onAddBooking={handleOpenBookingModal}
-                    onWhatsApp={handleQuickWhatsApp}
                   />
                 ))}
               </div>
