@@ -29,8 +29,8 @@ const resources = {
         finance: 'Financial Dashboard',
         notifications: 'Notifications',
         settings: 'Settings',
-        botSettings: 'Bot Menu Settings',
-        webhookInspector: 'Webhook Inspector',
+        botSettings: 'Settings',
+        webhookInspector: 'WhatsApp Chats',
         reminders: 'Reminders & Admins',
       },
       // Header
@@ -472,8 +472,8 @@ const resources = {
         finance: 'لوحة المالية',
         notifications: 'الإشعارات',
         settings: 'الإعدادات',
-        botSettings: 'إعدادات قائمة البوت',
-        webhookInspector: 'مراقب الويب هوك',
+        botSettings: 'الإعدادات',
+        webhookInspector: 'محادثات الواتساب',
         reminders: 'التذكيرات والمسؤولين',
       },
       // Header
