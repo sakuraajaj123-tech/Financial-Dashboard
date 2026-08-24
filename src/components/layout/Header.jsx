@@ -25,7 +25,7 @@ export function Header({
   const label = addLabel || t('header.addBooking');
 
   return (
-    <header translate="no" className="notranslate sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-6 py-3.5">
+    <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-6 py-3.5">
       <div className="flex items-center justify-between gap-3 sm:gap-4">
         {/* Left/Start: Hamburger (mobile only) + Title area */}
         <div className="flex items-center gap-3 min-w-0">
@@ -33,7 +33,7 @@ export function Header({
             type="button"
             onClick={onToggleSidebar}
             className="p-2 -ms-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 md:hidden flex-shrink-0 transition-colors focus:outline-none"
-            aria-label={t('common.openNav')}
+            aria-label="Open Navigation Menu"
           >
             <Menu className="w-5 h-5" />
           </button>
