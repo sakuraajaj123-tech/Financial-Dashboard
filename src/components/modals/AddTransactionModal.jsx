@@ -25,7 +25,7 @@ const INCOME_CATEGORIES = [
   'other',
 ];
 
-const FREQUENCIES = ['one-time', 'monthly', 'annual'];
+const FREQUENCIES = ['one-time', 'weekly', 'monthly', 'annual'];
 
 function InputWrapper({ label, error, icon: Icon, children }) {
   return (

@@ -10,6 +10,7 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
+  Timestamp,
 } from 'firebase/firestore';
 import { addMonths, format, parseISO, differenceInDays, startOfDay, isValid } from 'date-fns';
 
@@ -154,15 +155,21 @@ export function useMakkahRentals() {
   const addTenant = useCallback(async (tenantData) => {
     try {
       const colRef = collection(db, MAKKAH_COLLECTION);
+      const lastPaidDate = tenantData.lastPaidDate || format(new Date(), 'yyyy-MM-dd');
+      const parsedLastPaid = parseISO(lastPaidDate);
+      const validLastPaid = isValid(parsedLastPaid) ? parsedLastPaid : new Date();
+      const expireDate = addMonths(validLastPaid, 24);
+
       const newEntry = {
         name: tenantData.name?.trim() || 'مستأجر بدون اسم',
         phone: tenantData.phone?.trim() || '',
         unitNumber: tenantData.unitNumber?.trim() || '',
         rentAmount: Number(tenantData.rentAmount) || 0,
         paymentIntervalMonths: Number(tenantData.paymentIntervalMonths) || 1,
-        lastPaidDate: tenantData.lastPaidDate || format(new Date(), 'yyyy-MM-dd'),
+        lastPaidDate,
         notes: tenantData.notes?.trim() || '',
         createdAt: new Date().toISOString(),
+        expireAt: Timestamp.fromDate(expireDate),
       };
 
       const docRef = await addDoc(colRef, newEntry);
@@ -177,12 +184,20 @@ export function useMakkahRentals() {
   const updateTenant = useCallback(async (tenantId, updatedData) => {
     try {
       const docRef = doc(db, MAKKAH_COLLECTION, tenantId);
-      await updateDoc(docRef, {
+      const updates = {
         ...updatedData,
         rentAmount: Number(updatedData.rentAmount) || 0,
         paymentIntervalMonths: Number(updatedData.paymentIntervalMonths) || 1,
         updatedAt: new Date().toISOString(),
-      });
+      };
+
+      if (updatedData.lastPaidDate) {
+        const parsed = parseISO(updatedData.lastPaidDate);
+        const valid = isValid(parsed) ? parsed : new Date();
+        updates.expireAt = Timestamp.fromDate(addMonths(valid, 24));
+      }
+
+      await updateDoc(docRef, updates);
       console.log(`[MakkahRentals] ✅ Tenant updated: ${tenantId}`);
     } catch (err) {
       console.error('[MakkahRentals] ❌ Failed to update tenant:', err);
