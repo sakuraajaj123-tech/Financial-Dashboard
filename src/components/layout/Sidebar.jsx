@@ -44,7 +44,8 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
 
       {/* Sidebar Drawer */}
       <aside
-        className={`fixed left-0 top-0 h-full w-72 md:w-64 bg-slate-900/95 backdrop-blur-xl border-r border-slate-700/50 flex flex-col z-50 transition-transform duration-300 ease-in-out rtl:left-auto rtl:right-0 rtl:border-r-0 rtl:border-l md:!transform-none md:!translate-x-0 md:rtl:!translate-x-0 ${
+        translate="no"
+        className={`notranslate fixed left-0 top-0 h-full w-72 md:w-64 bg-slate-900/95 backdrop-blur-xl border-r border-slate-700/50 flex flex-col z-50 transition-transform duration-300 ease-in-out rtl:left-auto rtl:right-0 rtl:border-r-0 rtl:border-l md:!transform-none md:!translate-x-0 md:rtl:!translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'
         }`}
       >
@@ -65,7 +66,7 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
             type="button"
             onClick={onClose}
             className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors focus:outline-none"
-            aria-label="Close Navigation"
+            aria-label={t('common.closeNav')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -93,13 +94,13 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
         <div className="px-3 pb-2">
           <button
             onClick={toggleLanguage}
-            title={isArabic ? 'Switch to English' : 'التبديل إلى العربية'}
+            title={isArabic ? t('common.switchToEnglish') : t('common.switchToArabic')}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all duration-200 group"
           >
             <span className="text-lg leading-none flex-shrink-0">🌐</span>
             <span className="flex flex-col items-start">
-              <span className="text-xs font-semibold text-slate-300">{isArabic ? 'English' : 'العربية'}</span>
-              <span className="text-[10px] text-slate-500">{isArabic ? 'Switch to English' : 'تبديل اللغة'}</span>
+              <span className="text-xs font-semibold text-slate-300">{isArabic ? t('common.english') : t('common.arabic')}</span>
+              <span className="text-[10px] text-slate-500">{isArabic ? t('common.switchToEnglish') : t('common.switchToArabic')}</span>
             </span>
           </button>
         </div>
@@ -108,7 +109,9 @@ export function Sidebar({ activeView, onNavigate, isOpen, onClose }) {
         <div className="p-3 border-t border-slate-700/50">
           <div className="flex items-center gap-3 px-2 py-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-white">PM</span>
+              <span className="text-xs font-bold text-white notranslate" translate="no">
+                {isArabic ? 'إد' : 'PM'}
+              </span>
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-semibold text-slate-200 truncate">{t('common.userRole')}</p>

@@ -54,7 +54,7 @@ export default function App() {
 
   // ─── RTL / Language sync ──────────────────────────────────────────────────
   useEffect(() => {
-    const savedLang = localStorage.getItem('pms_language') || 'en';
+    const savedLang = localStorage.getItem('pms_language') || 'ar';
     document.documentElement.dir = savedLang === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = savedLang;
 

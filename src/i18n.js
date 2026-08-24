@@ -21,6 +21,12 @@ const resources = {
         success: 'Success',
         today: 'Today',
         all: 'All',
+        switchToEnglish: 'Switch to English',
+        switchToArabic: 'التبديل إلى العربية',
+        arabic: 'العربية',
+        english: 'English',
+        closeNav: 'Close navigation',
+        openNav: 'Open navigation',
       },
       // Sidebar
       nav: {
@@ -634,6 +640,12 @@ const resources = {
         success: 'نجاح',
         today: 'اليوم',
         all: 'الكل',
+        switchToEnglish: 'Switch to English',
+        switchToArabic: 'التبديل إلى العربية',
+        arabic: 'العربية',
+        english: 'English',
+        closeNav: 'إغلاق القائمة',
+        openNav: 'فتح القائمة',
       },
       // Sidebar
       nav: {
@@ -1236,8 +1248,8 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: localStorage.getItem('pms_language') || 'en',
-    fallbackLng: 'en',
+    lng: localStorage.getItem('pms_language') || 'ar',
+    fallbackLng: 'ar',
     interpolation: {
       escapeValue: false, // React already escapes by default
     },
