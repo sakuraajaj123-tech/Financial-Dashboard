@@ -385,7 +385,45 @@ export async function handler(event, context) {
         },
       };
     }
-    // ── Mode 5: Send media (image / audio) ────────────────────────────────────
+    // ── Mode 7: Send Generic Approved Template (Custom or Meta-approved) ─────
+    else if (body.mode === 'template' || body.mode === 'send_template') {
+      const { to, templateName, language, parameters, components } = body;
+      const cleanTo = String(to || '').replace(/[^0-9]/g, '');
+
+      if (!cleanTo || !templateName) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Missing "to" phone number or "templateName"' }),
+        };
+      }
+
+      const langCode = typeof language === 'string' ? language : (language?.code || 'ar');
+
+      let templateComponents = components;
+      if (!templateComponents && Array.isArray(parameters) && parameters.length > 0) {
+        templateComponents = [
+          {
+            type: 'body',
+            parameters: parameters.map((p) =>
+              typeof p === 'object' && p !== null && p.type ? p : { type: 'text', text: String(p ?? '') }
+            ),
+          },
+        ];
+      }
+
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanTo,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: langCode },
+          ...(templateComponents && templateComponents.length > 0 ? { components: templateComponents } : {}),
+        },
+      };
+    }
+    // ── Mode 8: Send media (image / audio) ────────────────────────────────────
     else if (body.mode === 'media') {
       const { to, base64Media, mimeType, mediaType, caption } = body;
 
@@ -557,6 +595,9 @@ export async function handler(event, context) {
     const messageId = data?.messages?.[0]?.id || '';
     if (body.mode === 'freetext') {
       await saveMessage(body.to, { sender: 'admin', text: body.text, messageId });
+    } else if (body.mode === 'template' || body.mode === 'send_template') {
+      const label = body.displayName ? `[قالب: ${body.displayName}]` : `[قالب: ${body.templateName}]`;
+      await saveMessage(body.to, { sender: 'admin', text: label, messageId });
     } else if (body.mode === 'send_terms') {
       await saveMessage(body.to, { sender: 'admin', text: `[قالب الشروط: ${body.variableValue}]`, messageId });
     } else if (body.mode === 'entry_reminder') {

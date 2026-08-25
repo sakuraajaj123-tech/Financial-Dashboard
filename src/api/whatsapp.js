@@ -173,3 +173,43 @@ export async function sendExitReminder(to, unitNumber = '1') {
   return await response.json();
 }
 
+/**
+ * Sends a generic approved WhatsApp template to a phone number.
+ * Can be used for cold chats (>24h window expired) and initiating new conversations.
+ * @param {Object} params
+ * @param {string} params.to - Recipient phone number
+ * @param {string} params.templateName - Name of the WhatsApp template
+ * @param {string} [params.language='ar'] - Template language code (e.g. 'ar', 'en_US')
+ * @param {Array<string|Object>} [params.parameters] - Template body parameter values
+ * @param {Array<Object>} [params.components] - Optional custom template components
+ * @param {string} [params.displayName] - Friendly template title for chat history
+ */
+export async function sendGenericTemplate({ to, templateName, language = 'ar', parameters = [], components = null, displayName = '' }) {
+  const response = await fetch('/api/whatsapp/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'template',
+      to,
+      templateName,
+      language,
+      parameters,
+      components,
+      displayName,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const metaMsg =
+      errorData?.details?.error?.message ||
+      errorData?.details?.error?.error_data?.details ||
+      errorData?.error ||
+      `Server returned ${response.status}`;
+    throw new Error(metaMsg);
+  }
+
+  return await response.json();
+}
+
+
