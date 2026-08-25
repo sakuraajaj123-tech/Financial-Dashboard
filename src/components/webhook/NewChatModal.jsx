@@ -11,9 +11,24 @@ import {
   AlertCircle,
   Settings,
   Layers,
-  Search,
+  Eye,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+/**
+ * Helper to compute live preview of template text with substituted variables.
+ */
+function renderLivePreview(text, paramValues, variables = []) {
+  if (!text) return '';
+  let preview = text;
+  variables.forEach((_, idx) => {
+    const placeholder = `{{${idx + 1}}}`;
+    const val = paramValues[idx];
+    const replacement = val && val.trim() ? val.trim() : placeholder;
+    preview = preview.split(placeholder).join(replacement);
+  });
+  return preview;
+}
 
 export function NewChatModal({
   isOpen,
@@ -28,25 +43,17 @@ export function NewChatModal({
   const [contactName, setContactName] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [paramValues, setParamValues] = useState({});
-  const [templateSearch, setTemplateSearch] = useState('');
 
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Selected template object
   const activeTemplate = useMemo(() => {
-    return templates.find((t) => t.id === selectedTemplateId) || (templates.length > 0 ? templates[0] : null);
-  }, [templates, selectedTemplateId]);
-
-  const filteredTemplates = useMemo(() => {
-    if (!templateSearch.trim()) return templates;
-    const q = templateSearch.toLowerCase().trim();
-    return templates.filter(
-      (tpl) =>
-        tpl.title?.toLowerCase().includes(q) ||
-        tpl.name?.toLowerCase().includes(q)
+    return (
+      templates.find((t) => t.id === selectedTemplateId) ||
+      (templates.length > 0 ? templates[0] : null)
     );
-  }, [templates, templateSearch]);
+  }, [templates, selectedTemplateId]);
 
   if (!isOpen) return null;
 
@@ -77,12 +84,18 @@ export function NewChatModal({
 
     const cleanPhone = phone.replace(/[^0-9]/g, '').trim();
     if (!cleanPhone || cleanPhone.length < 8) {
-      setErrorMsg(t('webhook.invalidPhoneNumber') || 'يرجى إدخال رقم هاتف دولي صحيح (مثال: 9665XXXXXXXX)');
+      setErrorMsg(
+        t('webhook.invalidPhoneNumber') ||
+          'يرجى إدخال رقم هاتف دولي صحيح (مثال: 9665XXXXXXXX)'
+      );
       return;
     }
 
     if (!activeTemplate) {
-      setErrorMsg(t('webhook.selectTemplateRequired') || 'يرجى اختيار قالب معتمد لإرساله للرقم الجديد');
+      setErrorMsg(
+        t('webhook.selectTemplateRequired') ||
+          'يرجى اختيار قالب معتمد لإرساله للرقم الجديد'
+      );
       return;
     }
 
@@ -92,7 +105,10 @@ export function NewChatModal({
     const missingIndex = parameters.findIndex((val) => !val);
     if (varList.length > 0 && missingIndex !== -1) {
       const varName = varList[missingIndex] || `{{${missingIndex + 1}}}`;
-      setErrorMsg(t('webhook.variableRequired', { name: varName }) || `يرجى إدخال قيمة المتغير (${varName})`);
+      setErrorMsg(
+        t('webhook.variableRequired', { name: varName }) ||
+          `يرجى إدخال قيمة المتغير (${varName})`
+      );
       return;
     }
 
@@ -105,18 +121,21 @@ export function NewChatModal({
         templateName: activeTemplate.name,
         language: activeTemplate.language || 'ar',
         parameters,
-        displayName: activeTemplate.title || activeTemplate.name,
+        displayName: activeTemplate.name,
       });
 
       setIsSending(false);
       onClose();
-      // Reset state
       setPhone('');
       setContactName('');
       setParamValues({});
     } catch (err) {
       console.error('Failed to send template to new number:', err);
-      setErrorMsg(err.message || t('common.error') || 'فشل إرسال الرسالة إلى الرقم الجديد');
+      setErrorMsg(
+        err.message ||
+          t('common.error') ||
+          'فشل إرسال الرسالة إلى الرقم الجديد'
+      );
       setIsSending(false);
     }
   };
@@ -257,14 +276,16 @@ export function NewChatModal({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="text-xs font-bold truncate">{tpl.title}</span>
+                        <span className="text-xs font-mono font-bold text-emerald-400 truncate">{tpl.name}</span>
                         <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300">
                           {tpl.language}
                         </span>
                       </div>
-                      <p className="text-[10px] font-mono text-slate-400 truncate" dir="ltr">
-                        {tpl.name}
-                      </p>
+                      {tpl.text && (
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5" dir="auto">
+                          {tpl.text}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -282,9 +303,9 @@ export function NewChatModal({
 
               {activeTemplate.variables.map((varName, idx) => (
                 <div key={idx} className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-400">
+                  <label className="block text-xs font-medium text-slate-300">
                     <span className="font-mono text-emerald-400 mr-1.5">{'{{' + (idx + 1) + '}}'}</span>
-                    <span>{varName}</span> <span className="text-rose-400">*</span>
+                    <span className="text-emerald-200">{varName}</span> <span className="text-rose-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -295,6 +316,19 @@ export function NewChatModal({
                   />
                 </div>
               ))}
+
+              {/* Live Preview */}
+              {activeTemplate.text && (
+                <div className="mt-2 p-2.5 bg-emerald-950/20 border border-emerald-500/20 rounded-lg space-y-1">
+                  <div className="flex items-center gap-1 text-emerald-400 text-[11px] font-semibold">
+                    <Eye className="w-3 h-3" />
+                    <span>{t('webhook.livePreview') || 'معاينة الرسالة:'}</span>
+                  </div>
+                  <p className="text-xs text-slate-200 bg-[#111b21] p-2 rounded border border-slate-800 whitespace-pre-wrap leading-relaxed">
+                    {renderLivePreview(activeTemplate.text, paramValues, activeTemplate.variables)}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

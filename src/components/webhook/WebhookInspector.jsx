@@ -1110,11 +1110,11 @@ function ReplyBox({
               type="button"
               onClick={() => handleSendTemplateStaticDirect(tpl)}
               disabled={status === 'sending'}
-              className="px-2.5 py-1 rounded-full bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 hover:text-white text-xs whitespace-nowrap shrink-0 border border-emerald-500/20 transition-colors flex items-center gap-1"
+              className="px-2.5 py-1 rounded-full bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 hover:text-white text-xs whitespace-nowrap shrink-0 border border-emerald-500/20 transition-colors flex items-center gap-1 font-mono"
               title={`Send approved template: ${tpl.name}`}
             >
               <FileCode2 className="w-2.5 h-2.5 text-emerald-400" />
-              <span>{tpl.title}</span>
+              <span>{tpl.name}</span>
             </button>
           ))}
 
@@ -2398,7 +2398,7 @@ export function WebhookInspector() {
                     templateName: tpl.name,
                     language: tpl.language,
                     parameters: [],
-                    displayName: tpl.title,
+                    displayName: tpl.name,
                   })
                 }
                 onSendSuccess={(phone, text, messageId, media, action, tempId) => {
@@ -2457,7 +2457,7 @@ export function WebhookInspector() {
         templates={templates}
         editingTemplate={editingTemplate}
         onSave={async (tplData) => {
-          if (tplData.id && !String(tplData.id).startsWith('default_')) {
+          if (tplData.id) {
             await updateTemplate(tplData.id, tplData);
           } else {
             await addTemplate(tplData);

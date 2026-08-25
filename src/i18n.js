@@ -547,6 +547,15 @@ const resources = {
         sendTemplateToReopen: 'Send Template',
         templateNameRequired: 'Template Name is required',
         templateLangRequired: 'Template language is required',
+        templateTextLabel: 'Approved Template Text Body',
+        templateTextPlaceholder: 'Type or paste the template text here...\nExample: Welcome {{1}}, your booking for unit {{2}} has been confirmed for {{3}} SAR.',
+        templateTextTip: 'You can type variables like {{1}}, {{2}} manually or click "+ Add Variable".',
+        templateTextRequired: 'Please write the template text body',
+        nameEachVariable: 'Naming Variables:',
+        nameVarsTip: 'Specify a label for each variable to help you fill them when sending to guests:',
+        variableLabel: 'Variable #{{num}}',
+        noVarsInText: 'This template has no variables (will be sent in 1 click).',
+        livePreview: 'Live Message Preview:',
       },
       // Json Viewer
       jsonViewer: {
@@ -1227,6 +1236,15 @@ const resources = {
         sendTemplateToReopen: 'إرسال قالب معتمد',
         templateNameRequired: 'يرجى إدخال اسم القالب المعتمد في ميتا',
         templateLangRequired: 'يرجى تحديد لغة القالب',
+        templateTextLabel: 'نص القالب المعتمد (Template Text Body)',
+        templateTextPlaceholder: 'اكتب أو الصق نص القالب هنا...\nمثال: مرحباً بك يا {{1}}، تم تأكيد حجزك للوحدة رقم {{2}} بمبلغ {{3}} ريال.',
+        templateTextTip: 'يمكنك كتابة المتغيرات يدوياً مثل {{1}}، {{2}} أو النقر على زر إضافة متغير.',
+        templateTextRequired: 'يرجى كتابة نص القالب',
+        nameEachVariable: 'تسمية كل متغير (Naming Variables):',
+        nameVarsTip: 'حدد اسماً توضيحياً لكل متغير ليظهر لك عند إرسال القالب للعملاء:',
+        variableLabel: 'المتغير رقم {{num}}',
+        noVarsInText: 'القالب حالياً بدون متغيرات (سيتم إرساله بنقرة واحدة مباشرة).',
+        livePreview: 'معاينة الرسالة الحية قبل الإرسال:',
       },
       // Json Viewer (Arabic)
       jsonViewer: {
