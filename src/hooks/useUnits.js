@@ -60,12 +60,15 @@ export function getBookingRevenueForMonth(booking, targetYear, targetMonthIndex)
 }
 
 function computeCurrentBooking(unit) {
-  const today = new Date();
+  const now = new Date();
   return (
     unit.bookings.find((b) => {
-      const checkIn = parseISO(b.checkIn);
-      const checkOut = parseISO(b.checkOut);
-      return isWithinInterval(today, { start: checkIn, end: checkOut });
+      if (!b.checkIn || !b.checkOut) return false;
+      const checkInTime = b.checkInTime || '16:00';
+      const checkOutTime = b.checkOutTime || '13:00';
+      const start = new Date(`${b.checkIn}T${checkInTime}:00`);
+      const end = new Date(`${b.checkOut}T${checkOutTime}:00`);
+      return now >= start && now < end;
     }) || null
   );
 }

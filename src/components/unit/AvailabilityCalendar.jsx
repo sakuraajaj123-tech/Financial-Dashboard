@@ -10,7 +10,6 @@ import {
   format,
   isSameMonth,
   isToday,
-  isWithinInterval,
   parseISO,
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +47,8 @@ export function AvailabilityCalendar({
     return bookings
       .filter((b) => b.checkIn && b.checkOut)
       .map((b) => ({
+        checkIn: b.checkIn,
+        checkOut: b.checkOut,
         start: parseISO(b.checkIn),
         end: parseISO(b.checkOut),
         tenant: b.tenantName,
@@ -55,10 +56,51 @@ export function AvailabilityCalendar({
       }));
   }, [bookings]);
 
-  function getBookingForDay(day) {
-    return bookedRanges.find((range) =>
-      isWithinInterval(day, { start: range.start, end: range.end })
-    );
+  function getDayStatus(day) {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    const checkInBooking = bookedRanges.find((b) => b.checkIn === dayStr);
+    const checkOutBooking = bookedRanges.find((b) => b.checkOut === dayStr);
+    const middleBooking = bookedRanges.find((b) => b.checkIn < dayStr && dayStr < b.checkOut);
+    const isTurnover = Boolean(checkInBooking && checkOutBooking);
+
+    if (isTurnover) {
+      return {
+        type: 'turnover',
+        tooltip: isArabic
+          ? `${formatDualDate(day, isArabic, formatBookingDate)} — تبديل حجوزات: مغادرة ${checkOutBooking.tenant} (1:00 م) / وصول ${checkInBooking.tenant} (4:00 م)`
+          : `${formatDualDate(day, isArabic, formatBookingDate)} — Turnover: ${checkOutBooking.tenant} departs (1:00 PM) / ${checkInBooking.tenant} arrives (4:00 PM)`,
+      };
+    }
+
+    if (middleBooking) {
+      return {
+        type: 'booked',
+        tooltip: `${formatDualDate(day, isArabic, formatBookingDate)} — ${middleBooking.tenant} (${formatSource(middleBooking.source, isArabic)})`,
+      };
+    }
+
+    if (checkInBooking) {
+      return {
+        type: 'checkIn',
+        tooltip: isArabic
+          ? `${formatDualDate(day, isArabic, formatBookingDate)} — دخول 4:00 م: ${checkInBooking.tenant} (${formatSource(checkInBooking.source, isArabic)})`
+          : `${formatDualDate(day, isArabic, formatBookingDate)} — Check-in 4:00 PM: ${checkInBooking.tenant} (${formatSource(checkInBooking.source, isArabic)})`,
+      };
+    }
+
+    if (checkOutBooking) {
+      return {
+        type: 'checkOut',
+        tooltip: isArabic
+          ? `${formatDualDate(day, isArabic, formatBookingDate)} — مغادرة 1:00 م: ${checkOutBooking.tenant} (متاح الليلة من 4:00 م)`
+          : `${formatDualDate(day, isArabic, formatBookingDate)} — Check-out 1:00 PM: ${checkOutBooking.tenant} (Available tonight from 4:00 PM)`,
+      };
+    }
+
+    return {
+      type: 'available',
+      tooltip: `${formatDualDate(day, isArabic, formatBookingDate)} — ${t('calendar.available')}`,
+    };
   }
 
   const monthLabel = useMemo(() => {
@@ -135,10 +177,14 @@ export function AvailabilityCalendar({
           </div>
 
           {/* Legend */}
-          <div className="flex items-center gap-2.5 text-xs font-medium">
+          <div className="flex items-center gap-2.5 text-xs font-medium flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-rose-500/60" />
               <span className="text-slate-400">{t('calendar.booked')}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-r from-rose-500/50 to-emerald-500/50 border border-emerald-500/30" />
+              <span className="text-slate-400">{isArabic ? 'مغادرة (متاح الليلة)' : 'Checkout (Free night)'}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30" />
@@ -163,36 +209,42 @@ export function AvailabilityCalendar({
           const day = item.date;
           const inMonth = item.inMonth;
           const isTodayDay = item.isToday;
-          const booking = getBookingForDay(day);
+          const dayStatus = getDayStatus(day);
+
+          let dayStyle = 'border border-transparent';
+          let textStyle = 'text-slate-300';
+
+          if (!inMonth) {
+            textStyle = 'text-slate-700 opacity-40';
+          } else if (isTodayDay) {
+            textStyle = 'text-white font-bold';
+          }
+
+          if (inMonth) {
+            if (dayStatus.type === 'turnover') {
+              dayStyle = 'bg-gradient-to-r from-rose-500/25 via-purple-500/20 to-rose-500/25 border-rose-500/40';
+              textStyle = 'text-rose-200 font-medium';
+            } else if (dayStatus.type === 'booked') {
+              dayStyle = 'bg-rose-500/20 border-rose-500/30';
+              textStyle = 'text-rose-200';
+            } else if (dayStatus.type === 'checkIn') {
+              dayStyle = 'bg-gradient-to-r from-slate-900/60 to-rose-500/25 border-rose-500/30';
+              textStyle = 'text-rose-100';
+            } else if (dayStatus.type === 'checkOut') {
+              dayStyle = 'bg-gradient-to-r from-rose-500/20 via-emerald-500/15 to-emerald-500/20 border-emerald-500/30 hover:bg-emerald-500/20';
+              textStyle = 'text-emerald-200';
+            } else {
+              dayStyle = 'bg-slate-900/50 border-slate-700/30 hover:bg-emerald-500/10 hover:border-emerald-500/30';
+            }
+          }
 
           return (
             <div
               key={idx}
-              className={`relative flex flex-col items-center justify-center py-2 rounded-xl text-xs transition-all select-none ${
-                !inMonth
-                  ? 'text-slate-700 opacity-40'
-                  : isTodayDay
-                  ? 'text-white font-bold'
-                  : booking
-                  ? 'text-rose-200'
-                  : 'text-slate-300'
-              } ${
-                booking && inMonth
-                  ? 'bg-rose-500/20 border border-rose-500/30'
-                  : inMonth && !booking
-                  ? 'bg-slate-900/50 border border-slate-700/30 hover:bg-emerald-500/10 hover:border-emerald-500/30'
-                  : 'border border-transparent'
-              } ${isTodayDay ? 'ring-2 ring-indigo-500/60 shadow-md shadow-indigo-500/10' : ''}`}
-              title={
-                booking
-                  ? `${formatDualDate(day, isArabic, formatBookingDate)} — ${booking.tenant} (${formatSource(
-                      booking.source,
-                      isArabic
-                    )})`
-                  : inMonth
-                  ? `${formatDualDate(day, isArabic, formatBookingDate)} — ${t('calendar.available')}`
-                  : ''
-              }
+              className={`relative flex flex-col items-center justify-center py-2 rounded-xl text-xs transition-all select-none ${textStyle} ${dayStyle} ${
+                isTodayDay ? 'ring-2 ring-indigo-500/60 shadow-md shadow-indigo-500/10' : ''
+              }`}
+              title={inMonth ? dayStatus.tooltip : ''}
             >
               <span className="font-bold text-[12px]">{item.primaryNum}</span>
               {item.secondaryNum && (
@@ -200,8 +252,14 @@ export function AvailabilityCalendar({
                   {item.secondaryNum}
                 </span>
               )}
-              {booking && inMonth && (
+              {inMonth && (dayStatus.type === 'booked' || dayStatus.type === 'turnover') && (
                 <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-rose-400" />
+              )}
+              {inMonth && dayStatus.type === 'checkIn' && (
+                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+              {inMonth && dayStatus.type === 'checkOut' && (
+                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-emerald-400" />
               )}
             </div>
           );

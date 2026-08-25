@@ -277,10 +277,21 @@ export function AddBookingModal({
   }, [onClose]);
 
   function handleChange(field, value) {
+    if (field === 'checkIn') {
+      setForm((prev) => {
+        let newCheckOut = prev.checkOut;
+        if (newCheckOut && (newCheckOut <= value || hasOverlap(value, newCheckOut, unitBookings, initialBooking?.id))) {
+          newCheckOut = '';
+        }
+        return { ...prev, checkIn: value, checkOut: newCheckOut };
+      });
+      setErrors((prev) => ({ ...prev, checkIn: null, checkOut: null, dateRange: null }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: null }));
-    // Clear date-range errors when either date changes
-    if (field === 'checkIn' || field === 'checkOut') {
+    if (field === 'checkOut') {
       setErrors((prev) => ({ ...prev, checkIn: null, checkOut: null, dateRange: null }));
     }
   }
@@ -426,9 +437,10 @@ export function AddBookingModal({
                   )}
                 </label>
                 <BookingCalendarPicker
+                  pickerType="checkIn"
                   value={form.checkIn}
                   onChange={(val) => handleChange('checkIn', val)}
-                  bookings={unitBookings}
+                  bookings={unitBookings.filter((b) => b.id !== initialBooking?.id)}
                   minDate={isEdit ? undefined : new Date()}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
@@ -449,10 +461,12 @@ export function AddBookingModal({
                   )}
                 </label>
                 <BookingCalendarPicker
+                  pickerType="checkOut"
+                  checkInValue={form.checkIn}
                   value={form.checkOut}
                   onChange={(val) => handleChange('checkOut', val)}
-                  bookings={unitBookings}
-                  minDate={form.checkIn ? new Date(form.checkIn) : (isEdit ? undefined : new Date())}
+                  bookings={unitBookings.filter((b) => b.id !== initialBooking?.id)}
+                  minDate={form.checkIn ? addDays(parseISO(form.checkIn), 1) : (isEdit ? undefined : new Date())}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
                 {errors.checkOut && <p className="text-xs text-rose-400 font-medium">{errors.checkOut}</p>}
