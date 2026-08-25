@@ -109,27 +109,32 @@ export function BookingCalendarPicker({
     const middleBooking = bookedRanges.find((b) => b.checkIn < dayStr && dayStr < b.checkOut);
     const isTurnover = Boolean(checkInBooking && checkOutBooking);
 
-    // Is before minDate
-    const isPastMin = minDate ? isBefore(startOfDay(day), startOfDay(minDate)) : false;
+    // Is before minDate (past date)
+    const isPast = minDate ? isBefore(startOfDay(day), startOfDay(minDate)) : false;
 
     let isBlocked = false;
+    let isBooked = false;
     let isTransitionAvailable = false;
     let tooltip = '';
 
-    if (isPastMin) {
+    if (isPast) {
       isBlocked = true;
-      tooltip = t('calendar.unavailable');
+      isBooked = false;
+      tooltip = isArabic ? 'تاريخ سابق (غير متاح)' : (t('calendar.unavailable') || 'Unavailable');
     } else if (pickerType === 'checkIn') {
       if (middleBooking) {
         isBlocked = true;
+        isBooked = true;
         tooltip = `${t('calendar.booked')} — ${middleBooking.tenant}`;
       } else if (isTurnover) {
         isBlocked = true;
+        isBooked = true;
         tooltip = isArabic
           ? `يوم تبديل كامل (مغادرة ${checkOutBooking.tenant} 1:00 م / دخول ${checkInBooking.tenant} 4:00 م)`
           : `Full turnover (${checkOutBooking.tenant} leaves 1:00 PM / ${checkInBooking.tenant} arrives 4:00 PM)`;
       } else if (checkInBooking) {
         isBlocked = true;
+        isBooked = true;
         tooltip = isArabic
           ? `محجوز للدخول 4:00 م — ${checkInBooking.tenant}`
           : `Check-in occupied (4:00 PM) — ${checkInBooking.tenant}`;
@@ -147,9 +152,11 @@ export function BookingCalendarPicker({
     } else if (pickerType === 'checkOut') {
       if (checkInValue && dayStr <= checkInValue) {
         isBlocked = true;
+        isBooked = false;
         tooltip = isArabic ? 'يجب أن يكون تاريخ المغادرة بعد الوصول' : 'Check-out must be after check-in';
       } else if (firstBlockedCheckIn && dayStr > firstBlockedCheckIn) {
         isBlocked = true;
+        isBooked = middleBooking || Boolean(checkInBooking);
         tooltip = isArabic ? 'لا يمكن الحجز عبر فترة محجوزة مسبقاً' : 'Cannot book across an existing reservation';
       } else if (firstBlockedCheckIn && dayStr === firstBlockedCheckIn) {
         // Departs at 1:00 PM on the same day the next guest arrives at 4:00 PM!
@@ -160,9 +167,11 @@ export function BookingCalendarPicker({
           : `Available for Check-out 1:00 PM (Next guest ${checkInBooking?.tenant || ''} arrives 4:00 PM)`;
       } else if (middleBooking) {
         isBlocked = true;
+        isBooked = true;
         tooltip = `${t('calendar.booked')} — ${middleBooking.tenant}`;
       } else if (checkOutBooking && !checkInBooking) {
         isBlocked = true;
+        isBooked = true;
         tooltip = isArabic
           ? `محجوز الليلة السابقة — ${checkOutBooking.tenant}`
           : `Occupied previous night — ${checkOutBooking.tenant}`;
@@ -174,6 +183,7 @@ export function BookingCalendarPicker({
       // Generic mode
       if (middleBooking || isTurnover) {
         isBlocked = true;
+        isBooked = true;
         tooltip = `${t('calendar.booked')} — ${(middleBooking || checkInBooking)?.tenant}`;
       } else {
         isBlocked = false;
@@ -184,6 +194,8 @@ export function BookingCalendarPicker({
     return {
       dayStr,
       isBlocked,
+      isBooked,
+      isPast,
       isTransitionAvailable,
       tooltip,
       middleBooking,
@@ -340,8 +352,10 @@ export function BookingCalendarPicker({
               calendarType === 'hijri'
                 ? 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400/50 cursor-pointer z-10'
                 : 'bg-indigo-500 text-white font-bold ring-2 ring-indigo-400/50 cursor-pointer z-10';
-          } else if (dayInfo.isBlocked) {
+          } else if (dayInfo.isBooked) {
             cellClass += 'bg-rose-500/15 text-rose-400/60 cursor-not-allowed';
+          } else if (dayInfo.isBlocked) {
+            cellClass += 'text-slate-600/60 cursor-not-allowed bg-slate-900/30';
           } else if (dayInfo.isTransitionAvailable) {
             cellClass += 'bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40 hover:bg-emerald-500/20 cursor-pointer';
           } else if (inRange) {
@@ -360,7 +374,7 @@ export function BookingCalendarPicker({
               title={inMonth ? dayInfo.tooltip : ''}
             >
               <span>{item.displayNum}</span>
-              {dayInfo.isBlocked && inMonth && (
+              {dayInfo.isBooked && inMonth && (
                 <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-rose-500/60" />
               )}
               {dayInfo.isTransitionAvailable && inMonth && !selected && (
