@@ -7,6 +7,7 @@ import { BOOKING_SOURCES } from '../../data/seedData';
 import { useTranslation } from 'react-i18next';
 import { BookingCalendarPicker } from './BookingCalendarPicker';
 import { parseISO, isBefore, isAfter, startOfDay, addDays, differenceInCalendarDays } from 'date-fns';
+import { formatDualDate, formatBookingDate } from '../../utils/dateFormatter';
 
 const ENTRY_REMINDER_OPTIONS = [
   { value: 15, labelEn: '15 minutes before', labelAr: 'قبل 15 دقيقة' },
@@ -413,12 +414,14 @@ export function AddBookingModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Check-in */}
               <div className="space-y-1.5">
-                <label className={`flex items-center gap-1.5 text-xs font-medium ${errors.checkIn ? 'text-rose-400' : 'text-slate-400'}`}>
-                  <Calendar className="w-3.5 h-3.5" />
-                  {t('modal.checkIn')}
+                <label className={`flex items-center justify-between gap-1.5 text-xs font-medium ${errors.checkIn ? 'text-rose-400' : 'text-slate-400'}`}>
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {t('modal.checkIn')}
+                  </span>
                   {form.checkIn && (
-                    <span className="ml-auto text-indigo-400 font-semibold tabular-nums">
-                      {form.checkIn}
+                    <span className="text-indigo-400 font-semibold tabular-nums text-[11px]">
+                      {formatDualDate(form.checkIn, isArabic, formatBookingDate)}
                     </span>
                   )}
                 </label>
@@ -434,12 +437,14 @@ export function AddBookingModal({
 
               {/* Check-out */}
               <div className="space-y-1.5">
-                <label className={`flex items-center gap-1.5 text-xs font-medium ${errors.checkOut ? 'text-rose-400' : 'text-slate-400'}`}>
-                  <Calendar className="w-3.5 h-3.5" />
-                  {t('modal.checkOut')}
+                <label className={`flex items-center justify-between gap-1.5 text-xs font-medium ${errors.checkOut ? 'text-rose-400' : 'text-slate-400'}`}>
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {t('modal.checkOut')}
+                  </span>
                   {form.checkOut && (
-                    <span className="ml-auto text-indigo-400 font-semibold tabular-nums">
-                      {form.checkOut}
+                    <span className="text-indigo-400 font-semibold tabular-nums text-[11px]">
+                      {formatDualDate(form.checkOut, isArabic, formatBookingDate)}
                     </span>
                   )}
                 </label>

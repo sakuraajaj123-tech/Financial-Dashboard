@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, DollarSign, Calendar, Tag, Repeat, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import { Button } from '../shared/Button';
+import { DatePicker } from '../shared/DatePicker';
 import { useTranslation } from 'react-i18next';
 
 const EXPENSE_CATEGORIES = [
@@ -210,14 +211,13 @@ export function AddTransactionModal({ isOpen, onClose, onSubmit }) {
               </div>
             </InputWrapper>
 
-            <InputWrapper label={t('finance.modal.date')} error={errors.date} icon={Calendar}>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-              />
-            </InputWrapper>
+            <DatePicker
+              label={t('finance.modal.date')}
+              value={date}
+              onChange={(val) => setDate(val)}
+              error={errors.date}
+              icon={Calendar}
+            />
           </div>
 
           {/* Category & Frequency in 2 columns */}

@@ -177,3 +177,19 @@ export function formatPaymentInterval(intervalMonths, isArabic = false) {
   return `Every ${num} Months`;
 }
 
+// Export Hijri helpers and constants for easy access
+export * from './hijriCalendar';
+import { formatHijriDate, formatHijriMonthYear, formatDualDate, getHijriParts } from './hijriCalendar';
+
+/**
+ * Format date in specified calendar system ('gregorian' | 'hijri' | 'dual')
+ */
+export function formatDateByCalendar(dateInput, calendarType = 'gregorian', isArabic = false) {
+  if (calendarType === 'hijri') {
+    return formatHijriDate(dateInput, isArabic);
+  }
+  if (calendarType === 'dual') {
+    return formatDualDate(dateInput, isArabic, formatBookingDate);
+  }
+  return formatBookingDate(dateInput, isArabic);
+}

@@ -1,12 +1,13 @@
-// UnitDetailView.jsx — Dedicated unit view with tabs (History & Analytics)
+// UnitDetailView.jsx — Dedicated unit view with tabs (History & Analytics) and Dual Hijri/Gregorian Availability Calendars
 
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowLeft, Plus, BedDouble } from 'lucide-react';
 import { StatusBadge } from '../shared/StatusBadge';
 import { Button } from '../shared/Button';
 import { BookingHistoryTab } from './BookingHistoryTab';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { addMonths } from 'date-fns';
+import { addHijriMonths } from '../../utils/hijriCalendar';
 import { useTranslation } from 'react-i18next';
 
 export function UnitDetailView({
@@ -16,8 +17,18 @@ export function UnitDetailView({
   onDeleteBooking,
   onViewBookingDetails,
 }) {
-  const { t } = useTranslation();
-  const nextMonth = useMemo(() => addMonths(new Date(), 1), []);
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+
+  const [calendarType, setCalendarType] = useState(isArabic ? 'hijri' : 'gregorian');
+
+  const currentMonthDate = useMemo(() => new Date(), []);
+  const nextMonthDate = useMemo(() => {
+    if (calendarType === 'hijri') {
+      return addHijriMonths(currentMonthDate, 1);
+    }
+    return addMonths(currentMonthDate, 1);
+  }, [calendarType, currentMonthDate]);
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -52,8 +63,18 @@ export function UnitDetailView({
       <div className="space-y-6">
         {/* Availability calendars — current & next month */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <AvailabilityCalendar bookings={unit.bookings || []} month={new Date()} />
-          <AvailabilityCalendar bookings={unit.bookings || []} month={nextMonth} />
+          <AvailabilityCalendar
+            bookings={unit.bookings || []}
+            month={currentMonthDate}
+            calendarType={calendarType}
+            onToggleCalendarType={setCalendarType}
+          />
+          <AvailabilityCalendar
+            bookings={unit.bookings || []}
+            month={nextMonthDate}
+            calendarType={calendarType}
+            onToggleCalendarType={setCalendarType}
+          />
         </div>
 
         {/* Booking history */}

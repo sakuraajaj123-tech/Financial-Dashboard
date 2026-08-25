@@ -4,9 +4,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, User, Phone, Home, DollarSign, Calendar, Repeat, FileText, Clock } from 'lucide-react';
 import { Button } from '../shared/Button';
+import { DatePicker } from '../shared/DatePicker';
 import { useTranslation } from 'react-i18next';
 import { format, addMonths, parseISO, isValid } from 'date-fns';
-import { formatBookingDate } from '../../utils/dateFormatter';
+import { formatBookingDate, formatDualDate } from '../../utils/dateFormatter';
 
 const PRESET_INTERVALS = [1, 2, 3, 4, 6, 12];
 
@@ -105,7 +106,7 @@ export function MakkahTenantModal({
       const parsed = parseISO(lastPaidDate);
       if (!isValid(parsed)) return null;
       const due = addMonths(parsed, effectiveInterval);
-      return formatBookingDate(due, isArabic);
+      return formatDualDate(due, isArabic, formatBookingDate);
     } catch {
       return null;
     }
@@ -332,19 +333,14 @@ export function MakkahTenantModal({
 
           {/* Last Paid Date & Real-time Due Date Preview */}
           <div className="space-y-2">
-            <InputWrapper
+            <DatePicker
               label={t('makkah.modal.lastPaidDate')}
+              value={lastPaidDate}
+              onChange={(val) => setLastPaidDate(val)}
               error={errors.lastPaidDate}
               icon={Calendar}
               required
-            >
-              <input
-                type="date"
-                value={lastPaidDate}
-                onChange={(e) => setLastPaidDate(e.target.value)}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-              />
-            </InputWrapper>
+            />
 
             {previewDueDateStr && (
               <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs animate-fade-in">
@@ -352,7 +348,7 @@ export function MakkahTenantModal({
                   <Clock className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
                   <span>{t('makkah.modal.nextDuePreview')}</span>
                 </span>
-                <span className="font-bold text-indigo-300">
+                <span className="font-bold text-indigo-300 text-right rtl:text-left">
                   {previewDueDateStr}
                 </span>
               </div>

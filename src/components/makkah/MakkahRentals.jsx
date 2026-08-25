@@ -44,7 +44,22 @@ import { useTranslation } from 'react-i18next';
 import { useMakkahRentals } from '../../hooks/useMakkahRentals';
 import { MakkahTenantModal } from '../modals/MakkahTenantModal';
 import { Button } from '../shared/Button';
-import { formatBookingDate, formatFullMonthYear, formatPaymentInterval, ARABIC_MONTHS, ENGLISH_FULL_MONTHS } from '../../utils/dateFormatter';
+import {
+  formatBookingDate,
+  formatFullMonthYear,
+  formatPaymentInterval,
+  formatHijriDate,
+  formatHijriMonthYear,
+  formatDualDate,
+  getHijriMonthGrid,
+  getHijriParts,
+  addHijriMonths,
+  subHijriMonths,
+  DAY_NAMES_AR,
+  DAY_NAMES_EN,
+  ARABIC_MONTHS,
+  ENGLISH_FULL_MONTHS,
+} from '../../utils/dateFormatter';
 
 /**
  * Format phone number to clean WhatsApp international digits
@@ -79,6 +94,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
   } = useMakkahRentals();
 
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'calendar'
+  const [calendarType, setCalendarType] = useState(isArabic ? 'hijri' : 'gregorian');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'overdue' | 'paid'
@@ -113,14 +129,40 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
     });
   }, [tenants, statusFilter, searchQuery]);
 
-  // ─── Calendar Days Calculation ────────────────────────────────────────────
+  // ─── Calendar Days Calculation (Gregorian / Hijri) ────────────────────────
   const calendarDays = useMemo(() => {
+    if (calendarType === 'hijri') {
+      const { days } = getHijriMonthGrid(currentMonth);
+      return days.map((d) => ({
+        date: d.date,
+        isoDate: d.isoDate,
+        primaryNum: d.hijriDay,
+        secondaryNum: d.date.getDate(),
+        inMonth: d.inCurrentMonth,
+        isToday: d.isToday,
+        fullLabel: `${formatHijriDate(d.date, isArabic)} / ${formatBookingDate(d.date, isArabic)}`,
+      }));
+    }
+
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const calStart = startOfWeek(monthStart, { weekStartsOn: 0 });
     const calEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
-    return eachDayOfInterval({ start: calStart, end: calEnd });
-  }, [currentMonth]);
+    const gDays = eachDayOfInterval({ start: calStart, end: calEnd });
+
+    return gDays.map((d) => {
+      const hp = getHijriParts(d);
+      return {
+        date: d,
+        isoDate: format(d, 'yyyy-MM-dd'),
+        primaryNum: d.getDate(),
+        secondaryNum: hp.day,
+        inMonth: isSameMonth(d, currentMonth),
+        isToday: isToday(d),
+        fullLabel: `${formatBookingDate(d, isArabic)} / ${formatHijriDate(d, isArabic)}`,
+      };
+    });
+  }, [calendarType, currentMonth, isArabic]);
 
   // Map tenants by due date (YYYY-MM-DD)
   const tenantsByDueDate = useMemo(() => {
@@ -136,8 +178,17 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
     return map;
   }, [filteredTenants]);
 
-  // Count total due in current month view
+  // Count total due in current month view (accounting for Hijri/Gregorian month)
   const currentMonthDueCount = useMemo(() => {
+    if (calendarType === 'hijri') {
+      const targetHp = getHijriParts(currentMonth);
+      return filteredTenants.filter((tenant) => {
+        if (!tenant.nextDueDate) return false;
+        const hp = getHijriParts(tenant.nextDueDate);
+        return hp.month === targetHp.month && hp.year === targetHp.year;
+      }).length;
+    }
+
     return filteredTenants.filter((tenant) => {
       if (!tenant.nextDueDate) return false;
       const [y, m] = tenant.nextDueDate.split('-');
@@ -145,15 +196,16 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
       const targetMonth = String(currentMonth.getMonth() + 1).padStart(2, '0');
       return String(y) === String(targetYear) && String(m) === String(targetMonth);
     }).length;
-  }, [filteredTenants, currentMonth]);
+  }, [filteredTenants, currentMonth, calendarType]);
 
   const monthLabel = useMemo(() => {
+    if (calendarType === 'hijri') {
+      return formatHijriMonthYear(currentMonth, isArabic);
+    }
     return formatFullMonthYear(currentMonth, isArabic);
-  }, [currentMonth, isArabic]);
+  }, [currentMonth, calendarType, isArabic]);
 
-  const dayNames = isArabic
-    ? ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNames = isArabic ? DAY_NAMES_AR : DAY_NAMES_EN;
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   const handleOpenAddModal = () => {
@@ -227,11 +279,19 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
   };
 
   const handlePrevMonth = () => {
-    setCurrentMonth((prev) => subMonths(prev, 1));
+    if (calendarType === 'hijri') {
+      setCurrentMonth((prev) => subHijriMonths(prev, 1));
+    } else {
+      setCurrentMonth((prev) => subMonths(prev, 1));
+    }
   };
 
   const handleNextMonth = () => {
-    setCurrentMonth((prev) => addMonths(prev, 1));
+    if (calendarType === 'hijri') {
+      setCurrentMonth((prev) => addHijriMonths(prev, 1));
+    } else {
+      setCurrentMonth((prev) => addMonths(prev, 1));
+    }
   };
 
   const handleGoToday = () => {
@@ -711,9 +771,10 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
         ) : (
           /* ─── View 2: MONTHLY CALENDAR VIEW ───────────────────────────────── */
           <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
-            {/* Calendar Navigation & Month Header */}
+            {/* Calendar Navigation, Month Header & Hijri/Gregorian Toggle */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Month Navigation */}
                 <div className="flex items-center bg-slate-950/80 rounded-xl border border-slate-800 p-1 shadow-inner">
                   <button
                     type="button"
@@ -737,6 +798,32 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                     className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                   >
                     {isArabic ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Calendar Type Toggle: [ هجري | ميلادي ] */}
+                <div className="inline-flex items-center p-0.5 rounded-xl bg-slate-950/90 border border-slate-800 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarType('hijri')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      calendarType === 'hijri'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {isArabic ? 'هجري' : 'Hijri'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarType('gregorian')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      calendarType === 'gregorian'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {isArabic ? 'ميلادي' : 'Gregorian'}
                   </button>
                 </div>
 
@@ -780,10 +867,10 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
 
             {/* Calendar Monthly Grid */}
             <div className="grid grid-cols-7 gap-1 sm:gap-2">
-              {calendarDays.map((day, idx) => {
-                const inMonth = isSameMonth(day, currentMonth);
-                const isCurrentToday = isToday(day);
-                const dayDateStr = format(day, 'yyyy-MM-dd');
+              {calendarDays.map((dayItem, idx) => {
+                const inMonth = dayItem.inMonth;
+                const isCurrentToday = dayItem.isToday;
+                const dayDateStr = dayItem.isoDate;
                 const dueTenants = tenantsByDueDate[dayDateStr] || [];
 
                 return (
@@ -797,17 +884,26 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                   >
                     {/* Top Day Header */}
                     <div className="flex items-center justify-between mb-1">
-                      <span
-                        className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center ${
-                          isCurrentToday
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/40'
-                            : inMonth
-                            ? 'text-slate-200'
-                            : 'text-slate-500'
-                        }`}
-                      >
-                        {format(day, 'd')}
-                      </span>
+                      <div className="flex items-baseline gap-1">
+                        <span
+                          className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center ${
+                            isCurrentToday
+                              ? calendarType === 'hijri'
+                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/40'
+                                : 'bg-indigo-600 text-white shadow-md shadow-indigo-600/40'
+                              : inMonth
+                              ? 'text-slate-200'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {dayItem.primaryNum}
+                        </span>
+                        {dayItem.secondaryNum && (
+                          <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
+                            {dayItem.secondaryNum}
+                          </span>
+                        )}
+                      </div>
 
                       {dueTenants.length > 0 && inMonth && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300">
@@ -991,8 +1087,8 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                     <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
                     {t('makkah.calendar.lastPaidLabel')}
                   </span>
-                  <span className="font-medium text-slate-300">
-                    {formatBookingDate(selectedCalendarTenant.lastPaidDate, isArabic)}
+                  <span className="font-medium text-slate-200 text-xs text-right rtl:text-left">
+                    {formatDualDate(selectedCalendarTenant.lastPaidDate, isArabic, formatBookingDate)}
                   </span>
                 </div>
 
@@ -1001,8 +1097,8 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
                     {t('makkah.calendar.nextDueLabel')}
                   </span>
-                  <span className="font-bold text-white">
-                    {formatBookingDate(selectedCalendarTenant.nextDueDate, isArabic)}
+                  <span className="font-bold text-indigo-300 text-xs text-right rtl:text-left">
+                    {formatDualDate(selectedCalendarTenant.nextDueDate, isArabic, formatBookingDate)}
                   </span>
                 </div>
 
