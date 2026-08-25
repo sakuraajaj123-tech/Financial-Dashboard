@@ -47,7 +47,6 @@ export function BookingCalendarPicker({
   onChange,
   bookings = [],
   minDate,
-  label,
   selectedRange = {},
 }) {
   const { t, i18n } = useTranslation();
