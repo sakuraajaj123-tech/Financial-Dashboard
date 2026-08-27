@@ -170,11 +170,11 @@ export function MakkahTenantModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/70 backdrop-blur-sm animate-fade-in">
       <div
-        className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/70 shadow-2xl overflow-hidden animate-slide-up"
+        className="relative w-full max-w-lg my-auto rounded-2xl bg-slate-900 border border-slate-700/70 shadow-2xl animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800 bg-slate-900/60">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800 bg-slate-900/60 rounded-t-2xl">
           <div>
             <h3 className="text-lg font-bold text-white tracking-wide">
               {isEditing ? t('makkah.modal.editTitle') : t('makkah.modal.addTitle')}

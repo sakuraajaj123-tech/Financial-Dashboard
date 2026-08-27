@@ -89,6 +89,54 @@ export function DatePicker({
     }
   }, [selectedDateObj]);
 
+  const [placementY, setPlacementY] = useState('bottom');
+  const [placementX, setPlacementX] = useState(isArabic ? 'right' : 'left');
+
+  // Dynamic viewport placement calculation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function updatePlacement() {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const popoverHeight = 360;
+      const popoverWidth = 320;
+      const windowHeight = window.innerHeight;
+      const windowWidth = window.innerWidth;
+
+      const spaceBelow = windowHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      if (spaceBelow < popoverHeight && spaceAbove > spaceBelow) {
+        setPlacementY('top');
+      } else {
+        setPlacementY('bottom');
+      }
+
+      if (isArabic) {
+        if (rect.right - popoverWidth < 12) {
+          setPlacementX('left');
+        } else {
+          setPlacementX('right');
+        }
+      } else {
+        if (rect.left + popoverWidth > windowWidth - 12) {
+          setPlacementX('right');
+        } else {
+          setPlacementX('left');
+        }
+      }
+    }
+
+    updatePlacement();
+    window.addEventListener('resize', updatePlacement);
+    window.addEventListener('scroll', updatePlacement, true);
+    return () => {
+      window.removeEventListener('resize', updatePlacement);
+      window.removeEventListener('scroll', updatePlacement, true);
+    };
+  }, [isOpen, isArabic]);
+
   // Click outside to close
   useEffect(() => {
     function handleClickOutside(event) {
@@ -277,8 +325,12 @@ export function DatePicker({
       {/* Popover Calendar */}
       {isOpen && (
         <div
-          className="absolute z-50 mt-1.5 left-0 right-0 sm:left-auto sm:right-auto sm:w-[320px] rounded-2xl bg-slate-900 border border-slate-700/80 p-4 shadow-2xl backdrop-blur-xl animate-slide-up space-y-3"
-          style={{ maxWidth: '100vw' }}
+          onClick={(e) => e.stopPropagation()}
+          className={`absolute z-[100] w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl bg-slate-900 border border-slate-700/80 p-4 shadow-2xl backdrop-blur-xl animate-slide-up space-y-3 ${
+            placementY === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+          } ${
+            placementX === 'right' ? 'right-0 left-auto' : 'left-0 right-auto'
+          }`}
         >
           {/* Top Bar: Hijri/Gregorian Toggle + Today button */}
           <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800">

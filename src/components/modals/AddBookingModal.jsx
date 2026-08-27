@@ -351,12 +351,12 @@ export function AddBookingModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm animate-fade-in"
       onClick={(e) => e.target === overlayRef.current && onClose()}
     >
-      <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700/60 shadow-2xl shadow-black/40 animate-scale-in overflow-hidden">
+      <div className="w-full max-w-2xl my-auto rounded-2xl bg-slate-900 border border-slate-700/60 shadow-2xl shadow-black/40 animate-scale-in">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-indigo-500/5 to-violet-500/5">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-indigo-500/5 to-violet-500/5 rounded-t-2xl">
           <div>
             <h3 className="text-lg font-bold text-white">
               {isEdit ? t('modal.bookingDetails') : t('modal.newBooking')}
