@@ -112,15 +112,32 @@ async function saveMessage(phone, { sender, text, messageId, contactName, mediaI
     const cleanPhone = phone.replace('+', '').trim();
     const chatRef = firestore.collection('chats').doc(cleanPhone);
 
-    await chatRef.set(
-      {
-        contactName: contactName || cleanPhone,
-        lastMessage: text?.substring(0, 100) || '',
-        lastMessageAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    let finalContactName = contactName || cleanPhone;
+    const updatePayload = {
+      lastMessage: text?.substring(0, 100) || '',
+      lastMessageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (contactName && contactName !== cleanPhone) {
+      updatePayload.waProfileName = contactName;
+    }
+
+    try {
+      const chatDoc = await chatRef.get();
+      if (chatDoc.exists) {
+        const data = chatDoc.data();
+        if (data?.isCustomName && data?.contactName) {
+          finalContactName = data.contactName;
+        }
+      }
+    } catch (readErr) {
+      console.warn('[Firestore] Warning reading existing chatDoc for custom name check:', readErr.message);
+    }
+
+    updatePayload.contactName = finalContactName;
+
+    await chatRef.set(updatePayload, { merge: true });
 
     const msgData = {
       sender,       // "user" or "bot" or "admin"
@@ -139,7 +156,7 @@ async function saveMessage(phone, { sender, text, messageId, contactName, mediaI
 
     await chatRef.collection('messages').add(msgData);
 
-    console.log(`[Firestore] ✅ Saved ${sender} ${mediaType || 'text'} message for ${cleanPhone}`);
+    console.log(`[Firestore] ✅ Saved ${sender} ${mediaType || 'text'} message for ${cleanPhone} (${finalContactName})`);
   } catch (err) {
     console.error(`[Firestore] ❌ Failed to save message for ${phone}:`, err.message);
   }

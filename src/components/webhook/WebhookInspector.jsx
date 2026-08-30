@@ -23,13 +23,15 @@ import {
   FileCode2,
   UserPlus,
   Clock,
+  Pencil,
+  RotateCcw,
 } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage, sendGenericTemplate } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
 import { JsonViewer } from './JsonViewer';
 import { useTranslation } from 'react-i18next';
 import { db } from '../../lib/firebase';
-import { collection, query, orderBy, onSnapshot, limit, startAfter, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, startAfter, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useQuickReplies } from '../../hooks/useQuickReplies';
 import { useWhatsAppTemplates } from '../../hooks/useWhatsAppTemplates';
 import { QuickRepliesPanel } from './QuickRepliesPanel';
@@ -37,6 +39,7 @@ import { QuickRepliesModal } from './QuickRepliesModal';
 import { TemplateManagerModal } from './TemplateManagerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { NewChatModal } from './NewChatModal';
+import { RenameContactModal } from './RenameContactModal';
 
 // ── Voice Message Audio Player Component ──────────────────────────────────────
 function VoiceMessagePlayer({ src, isOutgoing, mimeType }) {
@@ -1546,6 +1549,19 @@ export function WebhookInspector() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
 
+  // ── Contact Rename State ───────────────────────────────────────────────────
+  const [renameModal, setRenameModal] = useState({
+    isOpen: false,
+    phone: '',
+    currentName: '',
+    waProfileName: '',
+    isCustomName: false,
+  });
+  const [isEditingHeaderName, setIsEditingHeaderName] = useState(false);
+  const [headerNameInput, setHeaderNameInput] = useState('');
+  const [isSavingHeaderName, setIsSavingHeaderName] = useState(false);
+  const headerInputRef = useRef(null);
+
   const topic = getWebhookTopic();
 
   const activeChat = activePhone ? chats[activePhone] : null;
@@ -1962,6 +1978,78 @@ export function WebhookInspector() {
     [addOptimisticMessage, confirmOptimisticMessage, failOptimisticMessage]
   );
 
+  const handleRenameContact = useCallback(async (phone, newName, resetToWa = false) => {
+    const cleanPhone = String(phone || '').replace(/[^0-9]/g, '').trim();
+    if (!cleanPhone) return;
+
+    const trimmed = newName?.trim() || cleanPhone;
+    const isCustom = !resetToWa;
+
+    // 1. Optimistic state update
+    setChats(prev => {
+      const existing = prev[cleanPhone];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [cleanPhone]: {
+          ...existing,
+          contactName: trimmed,
+          isCustomName: isCustom,
+        },
+      };
+    });
+
+    // 2. Direct Firestore SDK write
+    try {
+      const chatDocRef = doc(db, 'chats', cleanPhone);
+      await setDoc(
+        chatDocRef,
+        {
+          contactName: trimmed,
+          isCustomName: isCustom,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (fsErr) {
+      console.warn('[Firestore] Direct write error, relying on API fallback:', fsErr.message);
+    }
+
+    // 3. Backend API call fallback
+    try {
+      await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          action: 'rename_contact',
+          contactName: trimmed,
+          isCustomName: isCustom,
+        }),
+      });
+    } catch (apiErr) {
+      console.error('[API] Error in rename_contact:', apiErr);
+    }
+  }, []);
+
+  const handleSaveHeaderName = async (e) => {
+    if (e) e.preventDefault();
+    if (!activePhone || !headerNameInput.trim()) return;
+    setIsSavingHeaderName(true);
+    try {
+      await handleRenameContact(activePhone, headerNameInput.trim(), false);
+      setIsEditingHeaderName(false);
+    } catch (err) {
+      console.error('Error saving header name:', err);
+    } finally {
+      setIsSavingHeaderName(false);
+    }
+  };
+
+  useEffect(() => {
+    setIsEditingHeaderName(false);
+  }, [activePhone]);
+
   const handleStartNewChat = useCallback(
     async ({ phone, contactName: cName, templateName, language, parameters, displayName }) => {
       const cleanPhone = String(phone || '').replace(/[^0-9]/g, '').trim();
@@ -1973,6 +2061,23 @@ export function WebhookInspector() {
         parameters,
         displayName,
       });
+
+      if (cName && cName.trim() && cName.trim() !== cleanPhone) {
+        try {
+          const chatDocRef = doc(db, 'chats', cleanPhone);
+          await setDoc(
+            chatDocRef,
+            {
+              contactName: cName.trim(),
+              isCustomName: true,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn('[Firestore] Error saving custom name for new chat:', e);
+        }
+      }
 
       handleOpenChat(cleanPhone);
       return res;
@@ -2008,6 +2113,8 @@ export function WebhookInspector() {
         if (change.type === 'added' || change.type === 'modified') {
           chatMetaCache[phone] = {
             contactName: data.contactName || phone,
+            isCustomName: data.isCustomName || false,
+            waProfileName: data.waProfileName || null,
             botPausedUntil: data.botPausedUntil || null,
           };
 
@@ -2016,9 +2123,27 @@ export function WebhookInspector() {
               const existing = prev[phone];
               if (!existing) return prev;
               const cn = data.contactName || existing.contactName;
+              const isCustom = data.isCustomName !== undefined ? data.isCustomName : existing.isCustomName;
+              const waName = data.waProfileName || existing.waProfileName;
               const bp = data.botPausedUntil ?? existing.botPausedUntil;
-              if (existing.contactName === cn && existing.botPausedUntil === bp) return prev;
-              return { ...prev, [phone]: { ...existing, contactName: cn, botPausedUntil: bp } };
+              if (
+                existing.contactName === cn &&
+                existing.botPausedUntil === bp &&
+                existing.isCustomName === isCustom &&
+                existing.waProfileName === waName
+              ) {
+                return prev;
+              }
+              return {
+                ...prev,
+                [phone]: {
+                  ...existing,
+                  contactName: cn,
+                  isCustomName: isCustom,
+                  waProfileName: waName,
+                  botPausedUntil: bp,
+                },
+              };
             });
           }
 
@@ -2068,6 +2193,8 @@ export function WebhookInspector() {
                   ...prev,
                   [phone]: {
                     contactName: meta.contactName || existing?.contactName || phone,
+                    isCustomName: meta.isCustomName ?? existing?.isCustomName ?? false,
+                    waProfileName: meta.waProfileName || existing?.waProfileName || null,
                     botPausedUntil: meta.botPausedUntil ?? existing?.botPausedUntil ?? null,
                     messages: allMessages,
                     unread,
@@ -2249,6 +2376,25 @@ export function WebhookInspector() {
                       <p className="text-xs text-slate-500 font-mono truncate" dir="ltr">+{chat.phone}</p>
                     </div>
 
+                    {/* Rename button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameModal({
+                          isOpen: true,
+                          phone: chat.phone,
+                          currentName: chat.contactName,
+                          waProfileName: chat.waProfileName || '',
+                          isCustomName: chat.isCustomName || false,
+                        });
+                      }}
+                      title={t('webhook.renameContact') || 'Rename Contact'}
+                      className="p-1.5 bg-transparent hover:bg-slate-700/60 text-slate-500 hover:text-emerald-400 rounded-full transition-all flex-shrink-0"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+
                     {/* Delete button */}
                     <button
                       onClick={(e) => handleDeleteChat(e, chat.phone)}
@@ -2307,22 +2453,84 @@ export function WebhookInspector() {
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
                   <User className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-slate-200 text-xs sm:text-sm truncate">{activeChat.contactName}</h3>
-                    {activeChat.botPausedUntil && activeChat.botPausedUntil > Date.now() && (
-                      <span
-                        className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium flex items-center gap-1"
-                        title={t('webhook.botPausedTooltip')}
+
+                {isEditingHeaderName ? (
+                  <form onSubmit={handleSaveHeaderName} className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    <input
+                      ref={headerInputRef}
+                      type="text"
+                      value={headerNameInput}
+                      onChange={(e) => setHeaderNameInput(e.target.value)}
+                      disabled={isSavingHeaderName}
+                      placeholder={t('webhook.enterContactName') || 'Contact Name'}
+                      className="bg-[#111b21] border border-emerald-500/60 rounded-xl px-3 py-1 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 flex-1 max-w-[280px]"
+                      dir="auto"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setIsEditingHeaderName(false);
+                        }
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingHeaderName || !headerNameInput.trim()}
+                      className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-all disabled:opacity-50 shadow-sm"
+                      title={t('webhook.saveName') || 'Save Name'}
+                    >
+                      {isSavingHeaderName ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingHeaderName(false)}
+                      disabled={isSavingHeaderName}
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors"
+                      title={t('common.cancel') || 'Cancel'}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3
+                        className="font-semibold text-slate-200 text-xs sm:text-sm truncate cursor-pointer hover:text-emerald-300 transition-colors flex items-center gap-1.5 group"
+                        onClick={() => {
+                          setIsEditingHeaderName(true);
+                          setHeaderNameInput(activeChat.contactName || activePhone);
+                          setTimeout(() => {
+                            headerInputRef.current?.focus();
+                            headerInputRef.current?.select();
+                          }, 50);
+                        }}
+                        title={t('webhook.renameContact') || 'Click to rename contact'}
                       >
-                        <Bot className="w-3 h-3 text-amber-400/80" />
-                        <span className="hidden sm:inline">{t('webhook.manualChatBadge')}</span>
-                        <span className="sm:hidden">{t('webhook.manualChatBadgeShort')}</span>
-                      </span>
-                    )}
+                        <span className="truncate">{activeChat.contactName}</span>
+                        <Pencil className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 opacity-60 group-hover:opacity-100 shrink-0 transition-all" />
+                      </h3>
+                      {activeChat.isCustomName && (
+                        <span className="px-1.5 py-0.2 text-[9px] font-semibold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          {t('webhook.customNameBadge') || 'Custom'}
+                        </span>
+                      )}
+                      {activeChat.botPausedUntil && activeChat.botPausedUntil > Date.now() && (
+                        <span
+                          className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium flex items-center gap-1"
+                          title={t('webhook.botPausedTooltip')}
+                        >
+                          <Bot className="w-3 h-3 text-amber-400/80" />
+                          <span className="hidden sm:inline">{t('webhook.manualChatBadge')}</span>
+                          <span className="sm:hidden">{t('webhook.manualChatBadgeShort')}</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-slate-500 font-mono truncate" dir="ltr">+{activePhone}</p>
                   </div>
-                  <p className="text-[11px] sm:text-xs text-slate-500 font-mono truncate" dir="ltr">+{activePhone}</p>
-                </div>
+                )}
                 <button
                   onClick={() => handleClearMessages(activePhone)}
                   disabled={isDeleting || activeMessages.length === 0}
@@ -2464,6 +2672,17 @@ export function WebhookInspector() {
           }
         }}
         onDelete={deleteTemplate}
+      />
+
+      {/* Rename Contact Modal */}
+      <RenameContactModal
+        isOpen={renameModal.isOpen}
+        onClose={() => setRenameModal({ isOpen: false, phone: '', currentName: '', waProfileName: '', isCustomName: false })}
+        phone={renameModal.phone}
+        currentName={renameModal.currentName}
+        waProfileName={renameModal.waProfileName}
+        isCustomName={renameModal.isCustomName}
+        onSave={handleRenameContact}
       />
     </div>
   );

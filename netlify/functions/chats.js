@@ -67,12 +67,12 @@ export async function handler(event, context) {
       };
     }
 
-    // ── POST: Mark chat messages as read ────────────────────────────────────
+    // ── POST: Mark read or Rename contact ───────────────────────────────────
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
-      const { phone, action } = body;
+      const { phone, action, contactName, isCustomName } = body;
 
-      if (!phone || action !== 'mark_read') {
+      if (!phone || !action) {
         return {
           statusCode: 400,
           headers,
@@ -82,29 +82,74 @@ export async function handler(event, context) {
 
       const cleanPhone = phone.replace('+', '').trim();
       const chatRef = firestore.collection('chats').doc(cleanPhone);
-      const messagesRef = chatRef.collection('messages');
 
-      const messagesSnapshot = await messagesRef.where('sender', '==', 'user').get();
-      if (!messagesSnapshot.empty) {
-        const batch = firestore.batch();
-        let updatedCount = 0;
-        messagesSnapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          if (data.isRead !== true || data.status !== 'read') {
-            batch.update(doc.ref, { isRead: true, status: 'read' });
-            updatedCount++;
-          }
-        });
-        if (updatedCount > 0) {
-          await batch.commit();
+      // 1. Rename contact action
+      if (action === 'rename_contact' || action === 'rename_chat') {
+        if (!contactName || !contactName.trim()) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Missing contactName' }),
+          };
         }
+
+        const trimmedName = contactName.trim();
+        const customFlag = isCustomName !== undefined ? isCustomName : true;
+
+        await chatRef.set(
+          {
+            contactName: trimmedName,
+            isCustomName: customFlag,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        console.log(`[Firestore] 🏷️ Renamed contact +${cleanPhone} to "${trimmedName}" (isCustom: ${customFlag})`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            action: 'rename_contact',
+            phone: cleanPhone,
+            contactName: trimmedName,
+            isCustomName: customFlag,
+          }),
+        };
       }
 
-      console.log(`[Firestore] ✅ Marked messages as read for chat +${cleanPhone}`);
+      // 2. Mark chat messages as read
+      if (action === 'mark_read') {
+        const messagesRef = chatRef.collection('messages');
+        const messagesSnapshot = await messagesRef.where('sender', '==', 'user').get();
+        if (!messagesSnapshot.empty) {
+          const batch = firestore.batch();
+          let updatedCount = 0;
+          messagesSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            if (data.isRead !== true || data.status !== 'read') {
+              batch.update(doc.ref, { isRead: true, status: 'read' });
+              updatedCount++;
+            }
+          });
+          if (updatedCount > 0) {
+            await batch.commit();
+          }
+        }
+
+        console.log(`[Firestore] ✅ Marked messages as read for chat +${cleanPhone}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, action: 'mark_read', phone: cleanPhone }),
+        };
+      }
+
       return {
-        statusCode: 200,
+        statusCode: 400,
         headers,
-        body: JSON.stringify({ success: true, action: 'mark_read', phone: cleanPhone }),
+        body: JSON.stringify({ error: `Unsupported action "${action}"` }),
       };
     }
 
@@ -239,6 +284,8 @@ export async function handler(event, context) {
         const phone = doc.id;
         const chatData = doc.data();
         const contactName = chatData.contactName || phone;
+        const isCustomName = chatData.isCustomName || false;
+        const waProfileName = chatData.waProfileName || null;
         const botPausedUntil = chatData.botPausedUntil || null;
 
         const messagesSnapshot = await chatsRef
@@ -326,6 +373,8 @@ export async function handler(event, context) {
 
         chatsResult[phone] = {
           contactName,
+          isCustomName,
+          waProfileName,
           botPausedUntil,
           messages,
         };
