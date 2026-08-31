@@ -1,8 +1,3 @@
-// FinancialDashboard.jsx — Main Financial & Cash Flow Dashboard view
-// Features Month Switcher with strict isolation, 3 dynamic KPI summary cards
-// (Total Income, Total Expenses, Net Profit/Loss with dynamic Green/Red styling),
-// and a Month-Isolated Ledger Table with 4-mode recurring transactions support.
-
 import { useState, useMemo } from 'react';
 import {
   TrendingUp,
@@ -19,6 +14,7 @@ import {
   ChevronRight,
   Repeat,
   Sparkles,
+  Landmark,
 } from 'lucide-react';
 import { Button } from '../shared/Button';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +44,7 @@ export function FinancialDashboard({
     goToCurrentMonth,
     transactions = [],
     monthPropertyIncome = 0,
+    monthMakkahIncome = 0,
     monthManualIncome = 0,
     monthTotalIncome = 0,
     monthTotalExpense = 0,
@@ -55,6 +52,7 @@ export function FinancialDashboard({
     isNetProfit = true,
     profitMargin = 0,
     deleteTransaction,
+    deleteLedgerItem,
   } = financeData;
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,18 +81,34 @@ export function FinancialDashboard({
   const filteredTransactions = useMemo(() => {
     return transactions.filter((item) => {
       const matchesType = typeFilter === 'all' || item.type === typeFilter;
-      const localizedCat = t(`finance.categories.${item.category}`, item.category).toLowerCase();
-      const titleMatch = (item.title || '').toLowerCase().includes(searchQuery.toLowerCase());
-      const catMatch = (item.category || '').toLowerCase().includes(searchQuery.toLowerCase()) || localizedCat.includes(searchQuery.toLowerCase());
-      return matchesType && (titleMatch || catMatch);
+      const localizedCat = t(`finance.categories.${item.category}`, item.category || '').toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return matchesType;
+
+      const titleMatch = (item.title || '').toLowerCase().includes(q);
+      const tenantMatch = (item.tenantName || '').toLowerCase().includes(q);
+      const unitMatch = String(item.unitNumber || '').toLowerCase().includes(q);
+      const catMatch = (item.category || '').toLowerCase().includes(q) || localizedCat.includes(q);
+      const sourceMatch = (item.source || '').toLowerCase().includes(q);
+
+      return matchesType && (titleMatch || tenantMatch || unitMatch || catMatch || sourceMatch);
     });
   }, [transactions, typeFilter, searchQuery, t]);
 
-  const handleDelete = async (id) => {
-    if (window.confirm(t('finance.ledger.deleteConfirm'))) {
-      setDeletingId(id);
+  const handleDelete = async (tx) => {
+    const isMakkah = tx.isMakkahRental;
+    const confirmMsg = isMakkah
+      ? t('finance.ledger.deleteMakkahPaymentConfirm')
+      : t('finance.ledger.deleteConfirm');
+
+    if (window.confirm(confirmMsg)) {
+      setDeletingId(tx.id);
       try {
-        await deleteTransaction(id);
+        if (deleteLedgerItem) {
+          await deleteLedgerItem(tx);
+        } else if (deleteTransaction) {
+          await deleteTransaction(tx.id);
+        }
       } catch (err) {
         console.error('Delete error:', err);
       } finally {
@@ -245,12 +259,20 @@ export function FinancialDashboard({
                 </span>
               </div>
 
-              {/* Dynamic Property Income + Manual breakdown badge */}
+              {/* Dynamic Property Income + Makkah + Manual breakdown badges */}
               <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                   <Building2 className="w-3.5 h-3.5 text-emerald-400" />
                   {t('finance.kpis.propertyIncome')}: SAR {monthPropertyIncome.toLocaleString()}
                 </span>
+
+                {monthMakkahIncome > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30">
+                    <Landmark className="w-3.5 h-3.5 text-teal-400" />
+                    {t('finance.kpis.makkahIncome')}: SAR {monthMakkahIncome.toLocaleString()}
+                  </span>
+                )}
+
                 {monthManualIncome > 0 && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-200 font-bold border border-slate-700">
                     +{t('finance.kpis.manualIncome')}: SAR {monthManualIncome.toLocaleString()}
@@ -491,16 +513,34 @@ export function FinancialDashboard({
                         </div>
                       </td>
 
-                      {/* Title */}
+                      {/* Title & Detail */}
                       <td className="px-5 py-3.5 text-white font-semibold">
-                        <div className="flex items-center gap-2">
-                          <span>{tx.title}</span>
-                          {isWeekly && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                          <span className="font-semibold text-slate-100">{tx.title}</span>
+
+                          {tx.isBooking && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 w-fit">
+                              {tx.source === 'Gathern' ? '🟣 Gathern' : `🔵 ${t('finance.categories.direct_booking', 'حجز مباشر')}`}
+                            </span>
+                          )}
+
+                          {tx.isMakkahRental && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 w-fit">
+                              🏛️ {t('finance.ledger.syncedMakkahBadge', 'سداد مكة')}
+                            </span>
+                          )}
+
+                          {tx.isWeekly && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 w-fit">
                               {t('finance.ledger.weeklyCalcBadge')}
                             </span>
                           )}
                         </div>
+                        {tx.isBooking && tx.checkIn && (
+                          <p className="text-[10px] text-slate-400 font-normal mt-0.5">
+                            {formatBookingDate(tx.checkIn, isArabic)} {tx.checkOut ? `→ ${formatBookingDate(tx.checkOut, isArabic)}` : ''}
+                          </p>
+                        )}
                       </td>
 
                       {/* Type Badge */}
@@ -564,15 +604,25 @@ export function FinancialDashboard({
 
                       {/* Actions */}
                       <td className="px-5 py-3.5 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tx.id)}
-                          disabled={deletingId === tx.id}
-                          title={t('finance.ledger.deleteTooltip')}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {tx.isBooking ? (
+                          <span
+                            title={t('finance.ledger.syncedBadge')}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                          >
+                            <Building2 className="w-3 h-3" />
+                            {t('finance.ledger.syncedBadge')}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(tx)}
+                            disabled={deletingId === tx.id}
+                            title={t('finance.ledger.deleteTooltip')}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
