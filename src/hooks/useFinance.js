@@ -1,3 +1,7 @@
+// useFinance.js — Central state management hook for Personal & Business Cash Flow
+// Features strict Month Isolation, 4-mode Recurring Transactions Engine,
+// 24-Month Data Sustainability with TTL expireAt timestamps, and dynamic Property Income integration.
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
 import {
@@ -15,29 +19,27 @@ import {
   addMonths,
   subMonths,
   isValid,
+  isBefore,
+  isAfter,
 } from 'date-fns';
 import { useUnits, getBookingRevenueForMonth } from './useUnits';
-import { useMakkahRentals } from './useMakkahRentals';
 
 const TRANSACTIONS_COLLECTION = 'transactions';
 
 export const CATEGORY_COLORS = {
-  maintenance: '#f43f5e',   // rose
-  utilities: '#f59e0b',     // amber
-  cleaning: '#06b6d4',      // cyan
-  supplies: '#8b5cf6',      // violet
-  marketing: '#ec4899',     // pink
-  taxes: '#64748b',         // slate
-  salaries: '#3b82f6',      // blue
-  rent: '#10b981',          // emerald
-  business: '#14b8a6',      // teal
-  consulting: '#6366f1',    // indigo
-  investment: '#84cc16',    // lime
-  personal: '#d946ef',      // fuchsia
-  gathern: '#8b5cf6',       // violet / purple (Gathern)
-  direct_booking: '#3b82f6',// blue (Direct)
-  makkah_rental: '#10b981', // emerald (Makkah Building)
-  other: '#94a3b8',         // gray
+  maintenance: '#f43f5e', // rose
+  utilities: '#f59e0b',   // amber
+  cleaning: '#06b6d4',    // cyan
+  supplies: '#8b5cf6',    // violet
+  marketing: '#ec4899',   // pink
+  taxes: '#64748b',       // slate
+  salaries: '#3b82f6',    // blue
+  rent: '#10b981',        // emerald
+  business: '#14b8a6',    // teal
+  consulting: '#6366f1',  // indigo
+  investment: '#84cc16',  // lime
+  personal: '#d946ef',    // fuchsia
+  other: '#94a3b8',       // gray
 };
 
 /**
@@ -98,12 +100,6 @@ export function getTransactionMonthAmount(tx) {
 
 export function useFinance() {
   const { units, loading: unitsLoading } = useUnits();
-  const {
-    allConfirmedPayments,
-    loading: makkahLoading,
-    deletePayment,
-  } = useMakkahRentals();
-
   const [transactions, setTransactions] = useState([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
 
@@ -183,82 +179,19 @@ export function useFinance() {
     return () => unsubscribe();
   }, []);
 
-  // ─── 1. Apartment Bookings Active in Selected Month (Ledger Items & Revenue) ──
-  const monthBookingEntries = useMemo(() => {
-    const entries = [];
-    units.forEach((unit) => {
-      (unit.bookings || []).forEach((b) => {
-        const proratedRev = getBookingRevenueForMonth(b, selectedYear, selectedMonthIndex);
-        if (proratedRev > 0) {
-          const isGathern = (b.source || '').toLowerCase() === 'gathern';
-          const tenantTitle = b.tenantName
-            ? `${b.tenantName} - ${unit.name || `وحدة ${unit.number}`}`
-            : unit.name || `وحدة ${unit.number}`;
-
-          entries.push({
-            id: `booking-${unit.id}-${b.id}`,
-            rawBookingId: b.id,
-            unitId: unit.id,
-            unitNumber: unit.number,
-            title: tenantTitle,
-            tenantName: b.tenantName || '',
-            phone: b.phone || '',
-            type: 'income',
-            category: isGathern ? 'gathern' : 'direct_booking',
-            frequency: 'one-time',
-            amount: Math.round(proratedRev),
-            effectiveAmount: Math.round(proratedRev),
-            totalBookingAmount: Number(b.amount) || 0,
-            date: b.checkIn || format(new Date(selectedYear, selectedMonthIndex, 1), 'yyyy-MM-dd'),
-            checkIn: b.checkIn,
-            checkOut: b.checkOut,
-            source: b.source || 'Direct Call',
-            isBooking: true,
-            isMakkahRental: false,
-            isManual: false,
-          });
-        }
-      });
-    });
-    return entries;
+  // ─── Dynamic Property Income strictly isolated for selected month (Prorated Daily) ──
+  const monthPropertyIncome = useMemo(() => {
+    const rawSum = units.reduce((total, unit) => {
+      const unitBookingsSum = (unit.bookings || []).reduce((sum, b) => {
+        return sum + getBookingRevenueForMonth(b, selectedYear, selectedMonthIndex);
+      }, 0);
+      return total + unitBookingsSum;
+    }, 0);
+    return Math.round(rawSum);
   }, [units, selectedYear, selectedMonthIndex]);
 
-  const monthPropertyIncome = useMemo(() => {
-    return monthBookingEntries.reduce((sum, item) => sum + item.effectiveAmount, 0);
-  }, [monthBookingEntries]);
-
-  // ─── 2. Confirmed Makkah Rental Payments in Selected Month ────────────────
-  const monthMakkahEntries = useMemo(() => {
-    return allConfirmedPayments
-      .filter((p) => {
-        if (!p.paidDate) return false;
-        const pDate = parseISO(p.paidDate);
-        return isValid(pDate) && pDate.getFullYear() === selectedYear && pDate.getMonth() === selectedMonthIndex;
-      })
-      .map((p) => ({
-        id: p.id || `mpay-${p.tenantId}-${p.paidDate}`,
-        tenantId: p.tenantId,
-        tenantName: p.tenantName || 'مستأجر',
-        unitNumber: p.unitNumber || '',
-        title: `عمارة مكة ${p.unitNumber ? `- شقة ${p.unitNumber}` : ''} (${p.tenantName || 'مستأجر'})`,
-        type: 'income',
-        category: 'makkah_rental',
-        frequency: 'one-time',
-        amount: Number(p.amount) || 0,
-        effectiveAmount: Number(p.amount) || 0,
-        date: p.paidDate,
-        isBooking: false,
-        isMakkahRental: true,
-        isManual: false,
-      }));
-  }, [allConfirmedPayments, selectedYear, selectedMonthIndex]);
-
-  const monthMakkahIncome = useMemo(() => {
-    return monthMakkahEntries.reduce((sum, item) => sum + item.effectiveAmount, 0);
-  }, [monthMakkahEntries]);
-
-  // ─── 3. Filtered Manual Transactions for Selected Month (Recurring Engine) ─
-  const monthManualTransactions = useMemo(() => {
+  // ─── Filtered Transactions for the Selected Month (Recurring Engine) ──────
+  const monthTransactions = useMemo(() => {
     return transactions
       .filter((tx) => isTransactionActiveInMonth(tx, selectedYear, selectedMonthIndex))
       .map((tx) => {
@@ -269,33 +202,37 @@ export function useFinance() {
           effectiveAmount,
           originalAmount: Number(tx.amount) || 0,
           isWeekly,
-          isBooking: false,
-          isMakkahRental: false,
-          isManual: true,
         };
       });
   }, [transactions, selectedYear, selectedMonthIndex]);
 
-  // ─── 4. Manual Income Sum for Selected Month ──────────────────────────────
-  const monthManualIncome = useMemo(() => {
-    return monthManualTransactions
-      .filter((t) => t.type === 'income')
+  // ─── Makkah Confirmed Rental Income for selected month ───────────────────
+  const monthMakkahIncome = useMemo(() => {
+    return monthTransactions
+      .filter((t) => t.type === 'income' && t.source === 'makkah_rentals')
       .reduce((sum, t) => sum + t.effectiveAmount, 0);
-  }, [monthManualTransactions]);
+  }, [monthTransactions]);
 
-  // ─── 5. Grand Total Income (Apartment Bookings + Makkah Confirmed + Manual) ──
+  // ─── Manual Income Sum for selected month (excluding Makkah rentals) ────
+  const monthManualIncome = useMemo(() => {
+    return monthTransactions
+      .filter((t) => t.type === 'income' && t.source !== 'makkah_rentals')
+      .reduce((sum, t) => sum + t.effectiveAmount, 0);
+  }, [monthTransactions]);
+
+  // ─── Grand Total Income for selected month (Property + Makkah + Manual) ──
   const monthTotalIncome = useMemo(() => {
     return monthPropertyIncome + monthMakkahIncome + monthManualIncome;
   }, [monthPropertyIncome, monthMakkahIncome, monthManualIncome]);
 
-  // ─── 6. Total Expenses Sum for Selected Month ─────────────────────────────
+  // ─── Total Expenses Sum for selected month ───────────────────────────────
   const monthTotalExpense = useMemo(() => {
-    return monthManualTransactions
+    return monthTransactions
       .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.effectiveAmount, 0);
-  }, [monthManualTransactions]);
+  }, [monthTransactions]);
 
-  // ─── 7. Net Profit / Loss for Selected Month ──────────────────────────────
+  // ─── Net Profit / Loss for selected month ────────────────────────────────
   const monthNetCashFlow = useMemo(() => {
     return monthTotalIncome - monthTotalExpense;
   }, [monthTotalIncome, monthTotalExpense]);
@@ -305,27 +242,6 @@ export function useFinance() {
   const profitMargin = monthTotalIncome > 0
     ? Math.round((monthNetCashFlow / monthTotalIncome) * 100)
     : 0;
-
-  // ─── 8. Unified Month Ledger Transactions (Bookings + Makkah + Manual) ─────
-  const monthLedgerTransactions = useMemo(() => {
-    const combined = [
-      ...monthBookingEntries,
-      ...monthMakkahEntries,
-      ...monthManualTransactions,
-    ];
-
-    // Sort descending by date (newest first)
-    combined.sort((a, b) => {
-      const dateA = new Date(a.date || 0).getTime();
-      const dateB = new Date(b.date || 0).getTime();
-      if (dateB !== dateA) return dateB - dateA;
-      const createdA = new Date(a.createdAt || 0).getTime();
-      const createdB = new Date(b.createdAt || 0).getTime();
-      return createdB - createdA;
-    });
-
-    return combined;
-  }, [monthBookingEntries, monthMakkahEntries, monthManualTransactions]);
 
   // ─── Mutations: Add, Delete, Update with 24-Month expireAt TTL Timestamp ─
   const addTransaction = useCallback(async (transactionData) => {
@@ -369,14 +285,6 @@ export function useFinance() {
     }
   }, []);
 
-  const deleteLedgerItem = useCallback(async (item) => {
-    if (item.isManual) {
-      await deleteTransaction(item.id);
-    } else if (item.isMakkahRental && item.tenantId) {
-      await deletePayment(item.tenantId, item.id);
-    }
-  }, [deleteTransaction, deletePayment]);
-
   const updateTransaction = useCallback(async (transactionId, updatedData) => {
     try {
       const docRef = doc(db, TRANSACTIONS_COLLECTION, transactionId);
@@ -410,13 +318,10 @@ export function useFinance() {
     goToNextMonth,
     goToCurrentMonth,
 
-    // Transactions for active month (Unified Bookings + Makkah + Manual)
-    transactions: monthLedgerTransactions,
-    manualTransactions: monthManualTransactions,
-    bookingEntries: monthBookingEntries,
-    makkahEntries: monthMakkahEntries,
+    // Transactions for active month
+    transactions: monthTransactions,
     allTransactions: transactions,
-    loading: unitsLoading || makkahLoading || transactionsLoading,
+    loading: unitsLoading || transactionsLoading,
 
     // Month isolated calculations
     monthPropertyIncome,
@@ -430,7 +335,6 @@ export function useFinance() {
 
     // Legacy aliases for full backward compatibility
     totalPropertyIncome: monthPropertyIncome,
-    totalMakkahIncome: monthMakkahIncome,
     totalManualIncome: monthManualIncome,
     totalIncome: monthTotalIncome,
     totalExpense: monthTotalExpense,
@@ -439,7 +343,6 @@ export function useFinance() {
     // Actions
     addTransaction,
     deleteTransaction,
-    deleteLedgerItem,
     updateTransaction,
     units,
   };

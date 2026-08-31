@@ -43,6 +43,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useMakkahRentals } from '../../hooks/useMakkahRentals';
 import { MakkahTenantModal } from '../modals/MakkahTenantModal';
+import { MakkahPaymentModal } from '../modals/MakkahPaymentModal';
 import { Button } from '../shared/Button';
 import {
   formatBookingDate,
@@ -101,6 +102,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
   const [isLocalModalOpen, setIsLocalModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
   const [selectedCalendarTenant, setSelectedCalendarTenant] = useState(null);
+  const [payingTenant, setPayingTenant] = useState(null);
   const [markingPaidId, setMarkingPaidId] = useState(null);
   const [successToast, setSuccessToast] = useState(null);
 
@@ -239,19 +241,21 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
     }
   };
 
-  const handleMarkAsPaid = async (tenantId) => {
-    setMarkingPaidId(tenantId);
+  const handleOpenPaymentModal = (tenant) => {
+    setPayingTenant(tenant);
+  };
+
+  const handleConfirmPayment = async (tenant, date, amount, notes) => {
     try {
-      await markAsPaid(tenantId);
-      setSuccessToast(t('makkah.table.markPaidSuccess'));
+      await markAsPaid(tenant, date, amount, notes);
+      setSuccessToast(t('makkah.paymentModal.successToast'));
       setTimeout(() => setSuccessToast(null), 3500);
-      if (selectedCalendarTenant?.id === tenantId) {
+      if (selectedCalendarTenant?.id === tenant.id) {
         setSelectedCalendarTenant(null);
       }
     } catch (err) {
-      console.error('Failed to mark tenant as paid:', err);
-    } finally {
-      setMarkingPaidId(null);
+      console.error('Failed to confirm payment:', err);
+      throw err;
     }
   };
 
@@ -711,16 +715,11 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                             {/* 1. Mark as Paid */}
                             <button
                               type="button"
-                              onClick={() => handleMarkAsPaid(tenant.id)}
-                              disabled={markingPaidId === tenant.id}
+                              onClick={() => handleOpenPaymentModal(tenant)}
                               title={t('makkah.table.markPaidTooltip')}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-50"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer"
                             >
-                              {markingPaidId === tenant.id ? (
-                                <div className="w-3.5 h-3.5 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5" />
-                              )}
+                              <Check className="w-3.5 h-3.5" />
                               <span className="hidden sm:inline">
                                 {t('makkah.status.paid')}
                               </span>
@@ -968,6 +967,16 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
         />
       )}
 
+      {/* ─── Confirm Payment & Record Income Modal ──────────────────────────── */}
+      {Boolean(payingTenant) && (
+        <MakkahPaymentModal
+          isOpen={Boolean(payingTenant)}
+          tenant={payingTenant}
+          onClose={() => setPayingTenant(null)}
+          onConfirm={handleConfirmPayment}
+        />
+      )}
+
       {/* ─── Calendar Tenant Quick Details Modal ────────────────────────────── */}
       {selectedCalendarTenant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -1121,8 +1130,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                   variant="success"
                   size="sm"
                   icon={Check}
-                  loading={markingPaidId === selectedCalendarTenant.id}
-                  onClick={() => handleMarkAsPaid(selectedCalendarTenant.id)}
+                  onClick={() => handleOpenPaymentModal(selectedCalendarTenant)}
                 >
                   {t('makkah.status.paid')}
                 </Button>

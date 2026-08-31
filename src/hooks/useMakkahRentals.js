@@ -9,14 +9,13 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  getDoc,
   onSnapshot,
-  arrayUnion,
   Timestamp,
 } from 'firebase/firestore';
 import { addMonths, format, parseISO, differenceInDays, startOfDay, isValid } from 'date-fns';
 
 const MAKKAH_COLLECTION = 'makkah_tenants';
+const TRANSACTIONS_COLLECTION = 'transactions';
 
 /**
  * Calculates nextDueDate, status, and days difference dynamically
@@ -108,16 +107,11 @@ export function useMakkahRentals() {
       const interval = Number(t.paymentIntervalMonths) || 1;
       const rentAmount = Number(t.rentAmount) || 0;
       const schedule = calculateRentalSchedule(t.lastPaidDate, interval);
-      const payments = (t.payments || []).map((p) => ({
-        ...p,
-        amount: Number(p.amount ?? rentAmount) || 0,
-      }));
 
       return {
         ...t,
         rentAmount,
         paymentIntervalMonths: interval,
-        payments,
         ...schedule,
       };
     });
@@ -133,23 +127,6 @@ export function useMakkahRentals() {
     });
 
     return enriched;
-  }, [rawTenants]);
-
-  // ─── All Confirmed Paid Payments across all tenants ───────────────────────
-  const allConfirmedPayments = useMemo(() => {
-    const list = [];
-    rawTenants.forEach((t) => {
-      (t.payments || []).forEach((p) => {
-        list.push({
-          ...p,
-          tenantId: t.id,
-          tenantName: p.tenantName || t.name,
-          unitNumber: p.unitNumber || t.unitNumber,
-          amount: Number(p.amount ?? t.rentAmount) || 0,
-        });
-      });
-    });
-    return list;
   }, [rawTenants]);
 
   // ─── KPI Metrics ──────────────────────────────────────────────────────────
@@ -192,7 +169,6 @@ export function useMakkahRentals() {
         paymentIntervalMonths: Number(tenantData.paymentIntervalMonths) || 1,
         lastPaidDate,
         notes: tenantData.notes?.trim() || '',
-        payments: [], // Confirmed payments array (starts empty so reference lastPaidDate is not counted as income)
         createdAt: new Date().toISOString(),
         expireAt: Timestamp.fromDate(expireDate),
       };
@@ -241,61 +217,56 @@ export function useMakkahRentals() {
     }
   }, []);
 
-  const markAsPaid = useCallback(async (tenantId, customDate = null) => {
+  const markAsPaid = useCallback(async (tenantOrId, customDate = null, customAmount = null, customNotes = '') => {
     try {
+      const idToUse = typeof tenantOrId === 'object' ? tenantOrId.id : tenantOrId;
+      const tenantObj = typeof tenantOrId === 'object'
+        ? tenantOrId
+        : rawTenants.find((t) => t.id === idToUse);
+
       const dateToSet = customDate || format(new Date(), 'yyyy-MM-dd');
-      const docRef = doc(db, MAKKAH_COLLECTION, tenantId);
-      const snap = await getDoc(docRef);
-      if (!snap.exists()) return;
+      const paidAmount = Number(customAmount !== null && customAmount !== undefined ? customAmount : tenantObj?.rentAmount) || 0;
 
-      const tenantData = snap.data();
-      const amount = Number(tenantData.rentAmount) || 0;
-
-      const paymentRecord = {
-        id: `mpay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        tenantId,
-        tenantName: tenantData.name || 'مستأجر',
-        unitNumber: tenantData.unitNumber || '',
-        amount,
-        paidDate: dateToSet,
-        createdAt: new Date().toISOString(),
-      };
-
+      // 1. Update tenant lastPaidDate in Firestore
+      const docRef = doc(db, MAKKAH_COLLECTION, idToUse);
       await updateDoc(docRef, {
         lastPaidDate: dateToSet,
-        payments: arrayUnion(paymentRecord),
         updatedAt: new Date().toISOString(),
       });
-      console.log(`[MakkahRentals] ✅ Tenant ${tenantId} marked as paid on ${dateToSet} and recorded payment.`);
+
+      // 2. Record confirmed income transaction in financial transactions collection
+      const parsedDate = parseISO(dateToSet);
+      const validDate = isValid(parsedDate) ? parsedDate : new Date();
+      const expireDate = addMonths(validDate, 24);
+
+      const unitDisplay = tenantObj?.unitNumber ? `شقة ${tenantObj.unitNumber}` : '';
+      const nameDisplay = tenantObj?.name ? `(${tenantObj.name})` : '';
+      const txTitle = `ايجار عمارة مكة - ${unitDisplay} ${nameDisplay}`.trim();
+
+      const txColRef = collection(db, TRANSACTIONS_COLLECTION);
+      await addDoc(txColRef, {
+        title: txTitle || 'ايجار عمارة مكة',
+        type: 'income',
+        category: 'rent',
+        amount: paidAmount,
+        date: dateToSet,
+        frequency: 'one-time',
+        source: 'makkah_rentals',
+        makkahTenantId: idToUse,
+        notes: customNotes || '',
+        createdAt: new Date().toISOString(),
+        expireAt: Timestamp.fromDate(expireDate),
+      });
+
+      console.log(`[MakkahRentals] ✅ Tenant ${idToUse} marked as paid on ${dateToSet} (SAR ${paidAmount} recorded in Finance)`);
     } catch (err) {
       console.error('[MakkahRentals] ❌ Failed to mark tenant as paid:', err);
       throw err;
     }
-  }, []);
-
-  const deletePayment = useCallback(async (tenantId, paymentId) => {
-    try {
-      const docRef = doc(db, MAKKAH_COLLECTION, tenantId);
-      const snap = await getDoc(docRef);
-      if (!snap.exists()) return;
-
-      const currentPayments = snap.data().payments || [];
-      const filtered = currentPayments.filter((p) => p.id !== paymentId);
-
-      await updateDoc(docRef, {
-        payments: filtered,
-        updatedAt: new Date().toISOString(),
-      });
-      console.log(`[MakkahRentals] ✅ Payment ${paymentId} deleted for tenant ${tenantId}`);
-    } catch (err) {
-      console.error('[MakkahRentals] ❌ Failed to delete payment:', err);
-      throw err;
-    }
-  }, []);
+  }, [rawTenants]);
 
   return {
     tenants,
-    allConfirmedPayments,
     loading,
     error,
     kpis,
@@ -303,6 +274,5 @@ export function useMakkahRentals() {
     updateTenant,
     deleteTenant,
     markAsPaid,
-    deletePayment,
   };
 }
