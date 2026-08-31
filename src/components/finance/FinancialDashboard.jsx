@@ -12,7 +12,6 @@ import {
   Search,
   Trash2,
   Building2,
-  Landmark,
   Calendar,
   ArrowDownRight,
   ArrowUpRight,
@@ -509,12 +508,6 @@ export function FinancialDashboard({
                       {/* Title */}
                       <td className="px-5 py-3.5 text-white font-semibold">
                         <div className="flex items-center gap-2">
-                          {tx.source === 'makkah_rentals' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex-shrink-0">
-                              <Landmark className="w-3 h-3 text-indigo-400" />
-                              {t('finance.kpis.makkahIncome')}
-                            </span>
-                          )}
                           <span>{tx.title}</span>
                           {isWeekly && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
