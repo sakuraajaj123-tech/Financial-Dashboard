@@ -15,7 +15,6 @@ import {
 import { addMonths, format, parseISO, differenceInDays, startOfDay, isValid } from 'date-fns';
 
 const MAKKAH_COLLECTION = 'makkah_tenants';
-const TRANSACTIONS_COLLECTION = 'transactions';
 
 /**
  * Calculates nextDueDate, status, and days difference dynamically
@@ -217,53 +216,20 @@ export function useMakkahRentals() {
     }
   }, []);
 
-  const markAsPaid = useCallback(async (tenantOrId, customDate = null, customAmount = null, customNotes = '') => {
+  const markAsPaid = useCallback(async (tenantId, customDate = null) => {
     try {
-      const idToUse = typeof tenantOrId === 'object' ? tenantOrId.id : tenantOrId;
-      const tenantObj = typeof tenantOrId === 'object'
-        ? tenantOrId
-        : rawTenants.find((t) => t.id === idToUse);
-
       const dateToSet = customDate || format(new Date(), 'yyyy-MM-dd');
-      const paidAmount = Number(customAmount !== null && customAmount !== undefined ? customAmount : tenantObj?.rentAmount) || 0;
-
-      // 1. Update tenant lastPaidDate in Firestore
-      const docRef = doc(db, MAKKAH_COLLECTION, idToUse);
+      const docRef = doc(db, MAKKAH_COLLECTION, tenantId);
       await updateDoc(docRef, {
         lastPaidDate: dateToSet,
         updatedAt: new Date().toISOString(),
       });
-
-      // 2. Record confirmed income transaction in financial transactions collection
-      const parsedDate = parseISO(dateToSet);
-      const validDate = isValid(parsedDate) ? parsedDate : new Date();
-      const expireDate = addMonths(validDate, 24);
-
-      const unitDisplay = tenantObj?.unitNumber ? `شقة ${tenantObj.unitNumber}` : '';
-      const nameDisplay = tenantObj?.name ? `(${tenantObj.name})` : '';
-      const txTitle = `ايجار عمارة مكة - ${unitDisplay} ${nameDisplay}`.trim();
-
-      const txColRef = collection(db, TRANSACTIONS_COLLECTION);
-      await addDoc(txColRef, {
-        title: txTitle || 'ايجار عمارة مكة',
-        type: 'income',
-        category: 'rent',
-        amount: paidAmount,
-        date: dateToSet,
-        frequency: 'one-time',
-        source: 'makkah_rentals',
-        makkahTenantId: idToUse,
-        notes: customNotes || '',
-        createdAt: new Date().toISOString(),
-        expireAt: Timestamp.fromDate(expireDate),
-      });
-
-      console.log(`[MakkahRentals] ✅ Tenant ${idToUse} marked as paid on ${dateToSet} (SAR ${paidAmount} recorded in Finance)`);
+      console.log(`[MakkahRentals] ✅ Tenant ${tenantId} marked as paid on ${dateToSet}`);
     } catch (err) {
       console.error('[MakkahRentals] ❌ Failed to mark tenant as paid:', err);
       throw err;
     }
-  }, [rawTenants]);
+  }, []);
 
   return {
     tenants,

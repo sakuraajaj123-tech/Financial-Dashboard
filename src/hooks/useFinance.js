@@ -206,24 +206,17 @@ export function useFinance() {
       });
   }, [transactions, selectedYear, selectedMonthIndex]);
 
-  // ─── Makkah Confirmed Rental Income for selected month ───────────────────
-  const monthMakkahIncome = useMemo(() => {
-    return monthTransactions
-      .filter((t) => t.type === 'income' && t.source === 'makkah_rentals')
-      .reduce((sum, t) => sum + t.effectiveAmount, 0);
-  }, [monthTransactions]);
-
-  // ─── Manual Income Sum for selected month (excluding Makkah rentals) ────
+  // ─── Manual Income Sum for selected month ────────────────────────────────
   const monthManualIncome = useMemo(() => {
     return monthTransactions
-      .filter((t) => t.type === 'income' && t.source !== 'makkah_rentals')
+      .filter((t) => t.type === 'income')
       .reduce((sum, t) => sum + t.effectiveAmount, 0);
   }, [monthTransactions]);
 
-  // ─── Grand Total Income for selected month (Property + Makkah + Manual) ──
+  // ─── Grand Total Income for selected month (Property + Manual) ───────────
   const monthTotalIncome = useMemo(() => {
-    return monthPropertyIncome + monthMakkahIncome + monthManualIncome;
-  }, [monthPropertyIncome, monthMakkahIncome, monthManualIncome]);
+    return monthPropertyIncome + monthManualIncome;
+  }, [monthPropertyIncome, monthManualIncome]);
 
   // ─── Total Expenses Sum for selected month ───────────────────────────────
   const monthTotalExpense = useMemo(() => {
@@ -325,7 +318,6 @@ export function useFinance() {
 
     // Month isolated calculations
     monthPropertyIncome,
-    monthMakkahIncome,
     monthManualIncome,
     monthTotalIncome,
     monthTotalExpense,

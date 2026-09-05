@@ -712,10 +712,15 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                             <button
                               type="button"
                               onClick={() => handleMarkAsPaid(tenant.id)}
+                              disabled={markingPaidId === tenant.id}
                               title={t('makkah.table.markPaidTooltip')}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-50"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              {markingPaidId === tenant.id ? (
+                                <div className="w-3.5 h-3.5 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
                               <span className="hidden sm:inline">
                                 {t('makkah.status.paid')}
                               </span>
@@ -963,7 +968,6 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
         />
       )}
 
-
       {/* ─── Calendar Tenant Quick Details Modal ────────────────────────────── */}
       {selectedCalendarTenant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -1117,6 +1121,7 @@ export function MakkahRentals({ isExternalModalOpen = false, onCloseExternalModa
                   variant="success"
                   size="sm"
                   icon={Check}
+                  loading={markingPaidId === selectedCalendarTenant.id}
                   onClick={() => handleMarkAsPaid(selectedCalendarTenant.id)}
                 >
                   {t('makkah.status.paid')}

@@ -48,7 +48,6 @@ export function FinancialDashboard({
     goToCurrentMonth,
     transactions = [],
     monthPropertyIncome = 0,
-    monthMakkahIncome = 0,
     monthManualIncome = 0,
     monthTotalIncome = 0,
     monthTotalExpense = 0,
@@ -246,28 +245,15 @@ export function FinancialDashboard({
                 </span>
               </div>
 
-              {/* Dynamic Property Income + Makkah Rentals + Manual breakdown badge */}
+              {/* Dynamic Property Income + Manual breakdown badge */}
               <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                {monthPropertyIncome > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                    {t('finance.kpis.propertyIncome')}: SAR {monthPropertyIncome.toLocaleString()}
-                  </span>
-                )}
-                {monthMakkahIncome > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
-                    <Landmark className="w-3.5 h-3.5 text-indigo-400" />
-                    {t('finance.kpis.makkahIncome')}: SAR {monthMakkahIncome.toLocaleString()}
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                  {t('finance.kpis.propertyIncome')}: SAR {monthPropertyIncome.toLocaleString()}
+                </span>
                 {monthManualIncome > 0 && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 text-slate-200 font-bold border border-slate-700">
                     +{t('finance.kpis.manualIncome')}: SAR {monthManualIncome.toLocaleString()}
-                  </span>
-                )}
-                {monthPropertyIncome === 0 && monthMakkahIncome === 0 && monthManualIncome === 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/60 text-slate-400 font-medium border border-slate-700/50">
-                    {t('finance.kpis.propertyIncome')}: SAR 0
                   </span>
                 )}
               </div>
