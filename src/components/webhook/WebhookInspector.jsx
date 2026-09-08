@@ -20,6 +20,8 @@ import {
   Clock,
   Pencil,
   RotateCcw,
+  ImagePlus,
+  Camera,
 } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage, sendGenericTemplate } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
@@ -371,6 +373,120 @@ function ReplyBox({
   const recordingTimerRef = useRef(null);
   const streamRef = useRef(null);
 
+  // ── Image upload state ───────────────────────────────────
+  // Each item: { id: string, file: File, objectUrl: string, status: 'pending'|'sending'|'sent'|'error' }
+  const [imageQueue, setImageQueue] = useState([]);
+  const [imageCaption, setImageCaption] = useState('');
+  const [isSendingImages, setIsSendingImages] = useState(false);
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
+  // ── Image queue helpers ──────────────────────────────────
+  /** Add File objects to the queue (dedup by name+size) */
+  const addFilesToQueue = (files) => {
+    const incoming = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (!incoming.length) return;
+    setImageQueue(prev => {
+      const existingKeys = new Set(prev.map(q => `${q.file.name}-${q.file.size}`));
+      const newItems = incoming
+        .filter(f => !existingKeys.has(`${f.name}-${f.size}`))
+        .map(f => ({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          file: f,
+          objectUrl: URL.createObjectURL(f),
+          status: 'pending',
+        }));
+      return [...prev, ...newItems];
+    });
+  };
+
+  /** Remove one image from the queue and revoke its object URL */
+  const removeImageFromQueue = (id) => {
+    setImageQueue(prev => {
+      const item = prev.find(q => q.id === id);
+      if (item) URL.revokeObjectURL(item.objectUrl);
+      return prev.filter(q => q.id !== id);
+    });
+  };
+
+  /** Revoke all object URLs and clear the queue */
+  const clearImageQueue = () => {
+    setImageQueue(prev => {
+      prev.forEach(q => URL.revokeObjectURL(q.objectUrl));
+      return [];
+    });
+    setImageCaption('');
+    // Reset file inputs so the same files can be re-selected
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
+  /** Read a File as a base64 string (no data: prefix) */
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  /** Send all queued images sequentially */
+  const handleSendImages = async () => {
+    if (!imageQueue.length || isSendingImages) return;
+    setIsSendingImages(true);
+    setErrorMsg('');
+
+    const caption = imageCaption.trim();
+    const queueSnapshot = [...imageQueue];
+
+    for (let i = 0; i < queueSnapshot.length; i++) {
+      const item = queueSnapshot[i];
+      const isFirst = i === 0;
+      const itemCaption = isFirst ? caption : undefined; // caption only on first image
+
+      // Mark item as sending
+      setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
+
+      // Optimistic message bubble
+      const tempId = onSendSuccess
+        ? onSendSuccess(to, itemCaption || t('webhook.captionImage'), null, {
+            mediaType: 'image',
+            mimeType: item.file.type || 'image/jpeg',
+            localObjectUrl: item.objectUrl,
+            caption: itemCaption || undefined,
+          }, 'optimistic')
+        : null;
+
+      try {
+        const base64 = await fileToBase64(item.file);
+        const res = await sendMediaMessage(to, base64, item.file.type || 'image/jpeg', 'image', itemCaption || undefined);
+
+        const uploadedId = res?.mediaId;
+        if (onSendSuccess && tempId) {
+          onSendSuccess(to, itemCaption || t('webhook.captionImage'), res?.messages?.[0]?.id, {
+            mediaType: 'image',
+            mediaId: uploadedId,
+            mediaUrl: res?.mediaUrl || (uploadedId ? `/api/media?id=${uploadedId}` : null),
+            mimeType: item.file.type || 'image/jpeg',
+            caption: itemCaption || undefined,
+          }, 'confirm', tempId);
+        }
+        setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sent' } : q));
+      } catch (err) {
+        console.error('[ImageUpload] Error sending image:', err);
+        if (onSendSuccess && tempId) {
+          onSendSuccess(to, itemCaption || t('webhook.captionImage'), null, null, 'fail', tempId);
+        }
+        setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error' } : q));
+        setErrorMsg(err.message || t('webhook.imageSendFailed', 'Failed to send image'));
+      }
+    }
+
+    setIsSendingImages(false);
+    setStatus('sent');
+    setTimeout(() => setStatus('idle'), 3000);
+    clearImageQueue();
+  };
+
   // ── Direct Send for Quick Static Template ───────────────
   const handleSendTemplateStaticDirect = async (tpl) => {
     if (!onSendTemplateDirect || status === 'sending') return;
@@ -579,8 +695,43 @@ function ReplyBox({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
       }
+      // Revoke any lingering object URLs
+      imageQueue.forEach(q => URL.revokeObjectURL(q.objectUrl));
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Hidden file inputs (rendered outside the visual flow)
+  const hiddenFileInputs = (
+    <>
+      {/* Gallery picker — multiple images */}
+      <input
+        ref={galleryInputRef}
+        id="img-gallery-input"
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          addFilesToQueue(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      {/* Camera capture — single shot */}
+      <input
+        ref={cameraInputRef}
+        id="img-camera-input"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          addFilesToQueue(e.target.files);
+          e.target.value = '';
+        }}
+      />
+    </>
+  );
 
 
 
@@ -618,6 +769,7 @@ function ReplyBox({
 
   return (
     <div className="bg-[#1f2c34] border-t border-slate-700/50 p-2.5 sm:p-3 flex-shrink-0 relative">
+      {hiddenFileInputs}
       {/* Quick Replies Overlay Panel */}
       <QuickRepliesPanel
         isOpen={showQuickReplies}
@@ -656,6 +808,113 @@ function ReplyBox({
           }
         }}
       />
+
+      {/* ── Image Preview Strip ──────────────────────────────── */}
+      {imageQueue.length > 0 && (
+        <div className="mb-2.5 animate-fade-in">
+          {/* Thumbnail row */}
+          <div className="flex items-start gap-2 overflow-x-auto pb-1 scrollbar-none flex-wrap">
+            {imageQueue.map((item) => (
+              <div
+                key={item.id}
+                className="relative flex-shrink-0 w-[72px] h-[72px] rounded-xl overflow-hidden border-2 group/thumb transition-all"
+                style={{
+                  borderColor:
+                    item.status === 'sent' ? 'rgb(52,211,153)'
+                    : item.status === 'error' ? 'rgb(248,113,113)'
+                    : item.status === 'sending' ? 'rgb(99,102,241)'
+                    : 'rgba(255,255,255,0.12)',
+                }}
+              >
+                <img
+                  src={item.objectUrl}
+                  alt="preview"
+                  className="w-full h-full object-cover"
+                />
+                {/* Status overlay */}
+                {item.status === 'sending' && (
+                  <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  </div>
+                )}
+                {item.status === 'sent' && (
+                  <div className="absolute inset-0 bg-emerald-950/50 flex items-center justify-center">
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  </div>
+                )}
+                {item.status === 'error' && (
+                  <div className="absolute inset-0 bg-rose-950/60 flex items-center justify-center">
+                    <X className="w-4 h-4 text-rose-400" />
+                  </div>
+                )}
+                {/* Remove button (only when idle/error) */}
+                {item.status !== 'sending' && item.status !== 'sent' && (
+                  <button
+                    type="button"
+                    onClick={() => removeImageFromQueue(item.id)}
+                    disabled={isSendingImages}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-950/80 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-sm disabled:opacity-0"
+                    aria-label="Remove image"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {/* Add more button */}
+            {!isSendingImages && (
+              <button
+                type="button"
+                onClick={() => galleryInputRef.current?.click()}
+                className="flex-shrink-0 w-[72px] h-[72px] rounded-xl border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-800/40 hover:bg-slate-700/60 text-slate-500 hover:text-emerald-400 flex flex-col items-center justify-center gap-1 transition-all text-[10px]"
+                aria-label="Add more images"
+              >
+                <ImagePlus className="w-4 h-4" />
+                <span>Add</span>
+              </button>
+            )}
+          </div>
+
+          {/* Caption + action bar */}
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="text"
+              value={imageCaption}
+              onChange={(e) => setImageCaption(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendImages(); } }}
+              placeholder={t('webhook.imageCaptionPlaceholder', 'Add a caption…')}
+              disabled={isSendingImages}
+              className="flex-1 bg-[#2a3942] border border-slate-700/60 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-50 transition-all"
+              dir="auto"
+              maxLength={1024}
+            />
+            {/* Discard all */}
+            <button
+              type="button"
+              onClick={clearImageQueue}
+              disabled={isSendingImages}
+              className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-700 hover:bg-rose-500/30 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-all disabled:opacity-40"
+              title="Discard all images"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            {/* Send images */}
+            <button
+              type="button"
+              onClick={handleSendImages}
+              disabled={isSendingImages || imageQueue.every(q => q.status === 'sent')}
+              className="flex-shrink-0 h-8 px-3.5 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center gap-1.5 text-xs font-semibold transition-all shadow-md"
+            >
+              {isSendingImages ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Sending…</span></>
+              ) : (
+                <><Send className="w-3 h-3 rtl:-scale-x-100" /><span>Send {imageQueue.filter(q => q.status === 'pending').length > 1 ? `${imageQueue.filter(q => q.status === 'pending').length} photos` : 'photo'}</span></>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {status === 'error' && (
         <div className="mb-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded text-xs text-rose-400 font-medium">
@@ -809,6 +1068,33 @@ function ReplyBox({
           {quickReplies.length > 0 && !showQuickReplies && (
             <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#1f2c34]" />
           )}
+        </button>
+
+        {/* Gallery image picker button */}
+        <button
+          type="button"
+          onClick={() => galleryInputRef.current?.click()}
+          disabled={status === 'sending' || isSendingImages}
+          className="relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-teal-400"
+          title="Attach images"
+        >
+          <ImagePlus className="w-5 h-5" />
+          {imageQueue.length > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-teal-500 text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#1f2c34]">
+              {imageQueue.length}
+            </span>
+          )}
+        </button>
+
+        {/* Camera capture button */}
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={status === 'sending' || isSendingImages}
+          className="relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-violet-400"
+          title="Take a photo"
+        >
+          <Camera className="w-5 h-5" />
         </button>
 
         <textarea
