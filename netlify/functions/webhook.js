@@ -451,6 +451,185 @@ function buildLeafResponsePayload(responseText, isCustomerService = false) {
   };
 }
 
+// ── Helper: Get the timestamp of the Admin's last inbound message ───────────
+// We read chats/{ADMIN_PHONE_NUMBER}.lastMessageAt which is updated by saveMessage()
+// every time any participant sends a message.  Because we only want to know when the
+// ADMIN specifically last wrote to us (not when we replied to them) we store a
+// separate field: adminLastInboundAt on the admin chat doc.
+async function getAdminLastInboundAt() {
+  try {
+    const firestore = getFirestore();
+    if (!firestore) return null;
+
+    const rawAdmin = process.env.ADMIN_PHONE_NUMBER || '';
+    const adminPhone = rawAdmin.replace(/[^0-9]/g, '');
+    if (!adminPhone) return null;
+
+    const chatDoc = await firestore.collection('chats').doc(adminPhone).get();
+    if (!chatDoc.exists) return null;
+
+    const data = chatDoc.data();
+    const ts = data?.adminLastInboundAt;
+    if (!ts) return null;
+
+    // Firestore Timestamp objects expose .toMillis(); plain numbers are ms already
+    return typeof ts === 'number' ? ts : ts?.toMillis?.() ?? null;
+  } catch (err) {
+    console.error('[Admin Notifier] ❌ Error reading adminLastInboundAt:', err.message);
+    return null;
+  }
+}
+
+// ── Helper: Record that the admin just sent us a message ─────────────────────
+// Called whenever we detect an inbound message from ADMIN_PHONE_NUMBER.
+async function recordAdminInbound() {
+  try {
+    const firestore = getFirestore();
+    if (!firestore) return;
+
+    const rawAdmin = process.env.ADMIN_PHONE_NUMBER || '';
+    const adminPhone = rawAdmin.replace(/[^0-9]/g, '');
+    if (!adminPhone) return;
+
+    await firestore.collection('chats').doc(adminPhone).set(
+      { adminLastInboundAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    console.log('[Admin Notifier] ✅ Recorded admin inbound timestamp.');
+  } catch (err) {
+    console.error('[Admin Notifier] ❌ Error recording admin inbound:', err.message);
+  }
+}
+
+// ── Helper: Notify Admin of a new incoming guest message ─────────────────────
+// Decision is made BEFORE any API call:
+//   • Admin last wrote to us within 24 hours → Option 1 (free-form text)
+//   • More than 24 hours (or no record)      → Option 2 (approved template)
+async function notifyAdmin({ phoneNumberId, accessToken, senderPhone, guestName, messageText }) {
+  const rawAdmin = process.env.ADMIN_PHONE_NUMBER || '';
+  const adminPhone = rawAdmin.replace(/[^0-9]/g, '');
+
+  // Guard: env var not configured
+  if (!adminPhone) {
+    console.log('[Admin Notifier] ℹ️ ADMIN_PHONE_NUMBER not configured. Skipping.');
+    return;
+  }
+
+  // Guard: loop prevention – incoming message is from the admin themselves
+  const cleanSender = String(senderPhone || '').replace(/[^0-9]/g, '');
+  if (cleanSender === adminPhone) {
+    console.log(`[Admin Notifier] 🛑 Sender IS the admin (${cleanSender}). Skipping to prevent loop.`);
+    return;
+  }
+
+  const endpoint = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+  // ── Proactive decision: check admin's 24-hour window ─────────────────────
+  const lastInboundAt = await getAdminLastInboundAt();
+  const now = Date.now();
+  const hoursAgo = lastInboundAt ? ((now - lastInboundAt) / 1000 / 60 / 60).toFixed(1) : null;
+  const windowOpen = lastInboundAt !== null && (now - lastInboundAt) <= WINDOW_MS;
+
+  if (windowOpen) {
+    console.log(`[Admin Notifier] ✅ Admin window OPEN (last inbound ${hoursAgo}h ago). → Option 1: Free-form text.`);
+  } else {
+    console.log(
+      lastInboundAt
+        ? `[Admin Notifier] ⏰ Admin window CLOSED (last inbound ${hoursAgo}h ago). → Option 2: Template.`
+        : `[Admin Notifier] ⏰ No admin inbound record found. → Option 2: Template.`
+    );
+  }
+
+  // ── Option 1: Free-form text (24h window with ADMIN is open) ─────────────
+  if (windowOpen) {
+    const alertBody =
+      `🔔 *تنبيه: رسالة جديدة من عميل*\n\n` +
+      `👤 *الاسم:* ${guestName}\n` +
+      `📱 *الرقم:* ${senderPhone}\n` +
+      `💬 *الرسالة:* ${messageText}`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: adminPhone,
+      type: 'text',
+      text: { body: alertBody },
+    };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const resData = await res.json();
+
+      if (res.ok && !resData.error) {
+        console.log(`[Admin Notifier] ✅ Option 1 delivered to admin (${adminPhone}).`, resData);
+      } else {
+        console.error(
+          `[Admin Notifier] ❌ Option 1 failed. HTTP ${res.status}. Meta error:`,
+          JSON.stringify(resData?.error || resData, null, 2)
+        );
+      }
+    } catch (err) {
+      console.error('[Admin Notifier] ❌ Option 1 fetch error:', err.message);
+    }
+    return;
+  }
+
+  // ── Option 2: Approved Meta template (24h window with ADMIN is closed) ────
+  const templateName = process.env.ADMIN_ALERT_TEMPLATE_NAME;
+  const templateLang = process.env.ADMIN_ALERT_TEMPLATE_LANG || 'ar';
+
+  if (!templateName) {
+    console.warn('[Admin Notifier] ⚠️ ADMIN_ALERT_TEMPLATE_NAME not configured. Cannot send template. Skipping.');
+    return;
+  }
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: adminPhone,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: templateLang },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: String(guestName   || 'عميل') },
+            { type: 'text', text: String(senderPhone || '') },
+            { type: 'text', text: String(messageText || 'لا يوجد نص') },
+          ],
+        },
+      ],
+    },
+  };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const resData = await res.json();
+
+    if (res.ok && !resData.error) {
+      console.log(`[Admin Notifier] ✅ Option 2 template "${templateName}" delivered to admin (${adminPhone}).`, resData);
+    } else {
+      console.error(
+        `[Admin Notifier] ❌ Option 2 template failed. HTTP ${res.status}. Meta error:`,
+        JSON.stringify(resData?.error || resData, null, 2)
+      );
+    }
+  } catch (err) {
+    console.error('[Admin Notifier] ❌ Option 2 fetch error:', err.message);
+  }
+}
+
 // ── Helper: Extract human-readable text summary for Firestore chat logs ─────
 function extractBotText(payload) {
   if (!payload) return '[رسالة تلقائية]';
@@ -616,9 +795,14 @@ export async function handler(event, context) {
             const guestName = contacts?.[0]?.profile?.name || contactName || senderPhone;
             const messageText = caption || incomingText || msg.text?.body || '';
 
+            // ── Detect if the incoming sender is the Admin ────────────────
+            const rawAdminPhone = process.env.ADMIN_PHONE_NUMBER || '';
+            const cleanAdminPhone = rawAdminPhone.replace(/[^0-9]/g, '');
+            const senderIsAdmin = cleanAdminPhone && senderPhone.replace(/[^0-9]/g, '') === cleanAdminPhone;
+
             // 1. Save incoming user message to Firestore
             await saveMessage(senderPhone, {
-              sender: 'user',
+              sender: senderIsAdmin ? 'admin' : 'user',
               text: messageText,
               messageId: msg.id,
               contactName: guestName,
@@ -629,7 +813,27 @@ export async function handler(event, context) {
               mediaUrl,
             });
 
-            // 2. Process Auto-Reply (if not paused by admin)
+            // 2. If sender is the Admin, record the admin's 24h window timestamp & skip everything else
+            if (senderIsAdmin) {
+              console.log(`[Admin Notifier] 📥 Inbound message from admin (${senderPhone}). Recording timestamp and skipping auto-reply + notification.`);
+              await recordAdminInbound();
+              return { statusCode: 200, body: 'EVENT_RECEIVED' };
+            }
+
+            // 3. Send Admin Notification (proactive: decides Option 1 vs Option 2 before any API call)
+            try {
+              await notifyAdmin({
+                phoneNumberId: PHONE_NUMBER_ID,
+                accessToken: ACCESS_TOKEN,
+                senderPhone,
+                guestName,
+                messageText,
+              });
+            } catch (notifyErr) {
+              console.error('[Admin Notifier] ❌ Non-blocking error in admin notification:', notifyErr.message);
+            }
+
+            // 4. Process Auto-Reply (if not paused by admin)
             if (botPaused) {
               console.log(`[Auto-Reply] ⏸️ Skipped auto-reply for +${senderPhone} (24-hour agent takeover active)`);
             } else {
