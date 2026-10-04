@@ -1,6 +1,7 @@
 // BookingHistoryTab.jsx — Chronological booking log with details view & localized dates/sources
 
-import { Phone, Trash2, Eye, Shield } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Phone, Trash2, Eye, Shield, Search, X } from 'lucide-react';
 import { parseISO } from 'date-fns';
 import { BOOKING_SOURCES } from '../../data/seedData';
 import { useTranslation } from 'react-i18next';
@@ -25,9 +26,34 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
 
-  const sortedBookings = [...(unit.bookings || [])].sort(
-    (a, b) => parseISO(b.checkIn) - parseISO(a.checkIn)
-  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all'); // 'all' | 'gathern' | 'direct'
+
+  const sortedBookings = useMemo(() => {
+    return [...(unit.bookings || [])].sort(
+      (a, b) => parseISO(b.checkIn) - parseISO(a.checkIn)
+    );
+  }, [unit.bookings]);
+
+  const filteredBookings = useMemo(() => {
+    return sortedBookings.filter((booking) => {
+      const q = searchQuery.toLowerCase().trim();
+      const guestName = (booking.guestName || booking.tenantName || '').toLowerCase();
+      const phone = (booking.phone || '').toLowerCase();
+      const matchesSearch = !q || guestName.includes(q) || phone.includes(q);
+
+      const isGathern =
+        booking.source === BOOKING_SOURCES.GATHERN ||
+        String(booking.source).toLowerCase().includes('gathern');
+
+      const matchesSource =
+        sourceFilter === 'all' ||
+        (sourceFilter === 'gathern' && isGathern) ||
+        (sourceFilter === 'direct' && !isGathern);
+
+      return matchesSearch && matchesSource;
+    });
+  }, [sortedBookings, searchQuery, sourceFilter]);
 
   if (sortedBookings.length === 0) {
     return (
@@ -39,89 +65,243 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-slate-500 uppercase tracking-widest font-medium">
-        {t('history.bookingsCount', { count: sortedBookings.length })}
-      </p>
+    <div className="space-y-4">
+      {/* Search & Filter Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-700/50 p-3 rounded-xl backdrop-blur-sm">
+        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+          {searchQuery.trim() || sourceFilter !== 'all'
+            ? t('history.filteredCount', { filtered: filteredBookings.length, total: sortedBookings.length })
+            : t('history.bookingsCount', { count: sortedBookings.length })}
+        </p>
 
-      {/* Desktop table */}
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-700/50">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-800/60 border-b border-slate-700/50">
-              {[
-                t('history.tenant'),
-                t('history.phone'),
-                t('history.source'),
-                t('history.checkIn'),
-                t('history.checkOut'),
-                t('history.amount'),
-                t('history.insurance'),
-                t('history.action'),
-              ].map((h) => (
-                <th key={h} className="text-left rtl:text-right text-xs font-semibold text-slate-400 px-4 py-3 uppercase tracking-wider">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700/30">
-            {sortedBookings.map((booking) => {
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search Input */}
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-700/70 rounded-xl px-3 py-1.5 text-xs text-white focus-within:border-indigo-500 transition-colors flex-1 sm:w-60">
+            <Search className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder={t('history.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent outline-none text-xs text-slate-200 placeholder-slate-500 w-full"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="p-0.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                title={t('common.cancel')}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Source Filter */}
+          <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs">
+            <button
+              type="button"
+              onClick={() => setSourceFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                sourceFilter === 'all'
+                  ? 'bg-slate-700 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t('common.all')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceFilter('gathern')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                sourceFilter === 'gathern'
+                  ? 'bg-violet-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+              {t('dashboard.filterGathern')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceFilter('direct')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                sourceFilter === 'direct'
+                  ? 'bg-blue-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              {t('dashboard.filterDirect')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {filteredBookings.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-slate-500 bg-slate-900/40 rounded-xl border border-slate-800/80">
+          <Search className="w-7 h-7 mb-2 text-slate-600" />
+          <p className="text-sm font-semibold text-slate-300">{t('history.noSearchResults')}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              setSourceFilter('all');
+            }}
+            className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer"
+          >
+            {t('history.clearSearch')}
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-700/50">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-800/60 border-b border-slate-700/50">
+                  {[
+                    t('history.tenant'),
+                    t('history.phone'),
+                    t('history.source'),
+                    t('history.checkIn'),
+                    t('history.checkOut'),
+                    t('history.amount'),
+                    t('history.insurance'),
+                    t('history.action'),
+                  ].map((h) => (
+                    <th key={h} className="text-left rtl:text-right text-xs font-semibold text-slate-400 px-4 py-3 uppercase tracking-wider">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/30">
+                {filteredBookings.map((booking) => {
+                  const isCurrent = booking.id === unit.currentBookingId;
+                  const hasInsurance = Number(booking.insurance) > 0;
+                  return (
+                    <tr
+                      key={booking.id}
+                      className={`transition-colors hover:bg-slate-800/30 ${
+                        isCurrent ? 'bg-indigo-500/5 border-l-2 rtl:border-l-0 rtl:border-r-2 border-indigo-500' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500/60 to-violet-600/60 flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-bold text-white">
+                              {(booking.guestName || booking.tenantName || 'G').charAt(0)}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-200 text-sm">
+                              {booking.guestName || booking.tenantName}
+                            </p>
+                            {isCurrent && (
+                              <p className="text-xs text-indigo-400 font-semibold">{t('history.current')}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                          <Phone className="w-3 h-3" />
+                          <span className="font-mono" dir="ltr">{booking.phone}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <SourceTag source={booking.source} isArabic={isArabic} />
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
+                        {formatBookingDate(booking.checkIn, isArabic)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
+                        {formatBookingDate(booking.checkOut, isArabic)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-semibold text-emerald-400 whitespace-nowrap">
+                          SAR {booking.amount.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {hasInsurance ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 whitespace-nowrap">
+                            <Shield className="w-3 h-3 text-amber-400" />
+                            SAR {Number(booking.insurance).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-600 font-mono">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onViewDetails && onViewDetails(booking, unit)}
+                            title={t('history.details')}
+                            className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">{t('history.details')}</span>
+                          </button>
+                          <button
+                            onClick={() => onDeleteBooking && onDeleteBooking(unit.id, booking.id, booking.phone)}
+                            title={t('history.delete')}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">{t('history.delete')}</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {filteredBookings.map((booking) => {
               const isCurrent = booking.id === unit.currentBookingId;
               const hasInsurance = Number(booking.insurance) > 0;
               return (
-                <tr
+                <div
                   key={booking.id}
-                  className={`transition-colors hover:bg-slate-800/30 ${
-                    isCurrent ? 'bg-indigo-500/5 border-l-2 rtl:border-l-0 rtl:border-r-2 border-indigo-500' : ''
+                  className={`rounded-xl border p-4 space-y-3 ${
+                    isCurrent
+                      ? 'bg-indigo-500/5 border-indigo-500/30'
+                      : 'bg-slate-800/40 border-slate-700/40'
                   }`}
                 >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500/60 to-violet-600/60 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-bold text-white">
-                          {booking.tenantName.charAt(0)}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-200 text-sm">{booking.tenantName}</p>
-                        {isCurrent && (
-                          <p className="text-xs text-indigo-400 font-semibold">{t('history.current')}</p>
-                        )}
-                      </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-slate-200">{booking.guestName || booking.tenantName}</p>
+                      <p className="text-xs text-slate-500 font-mono" dir="ltr">{booking.phone}</p>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 text-slate-400 text-xs">
-                      <Phone className="w-3 h-3" />
-                      <span className="font-mono" dir="ltr">{booking.phone}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
                     <SourceTag source={booking.source} isArabic={isArabic} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
-                    {formatBookingDate(booking.checkIn, isArabic)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
-                    {formatBookingDate(booking.checkOut, isArabic)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-semibold text-emerald-400 whitespace-nowrap">
-                      SAR {booking.amount.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {hasInsurance ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 whitespace-nowrap">
-                        <Shield className="w-3 h-3 text-amber-400" />
-                        SAR {Number(booking.insurance).toLocaleString()}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-600 font-mono">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
+                    <div>
+                      <p className="text-slate-600">{t('history.checkIn')}</p>
+                      <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkIn, isArabic)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-600">{t('history.checkOut')}</p>
+                      <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkOut, isArabic)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-emerald-400 font-bold text-sm">SAR {booking.amount.toLocaleString()}</span>
+                      {hasInsurance && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                          <Shield className="w-3 h-3" />
+                          {t('history.depositTag', { amount: Number(booking.insurance).toLocaleString() })}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => onViewDetails && onViewDetails(booking, unit)}
@@ -129,7 +309,7 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                         className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">{t('history.details')}</span>
+                        <span>{t('history.details')}</span>
                       </button>
                       <button
                         onClick={() => onDeleteBooking && onDeleteBooking(unit.id, booking.id, booking.phone)}
@@ -137,81 +317,16 @@ export function BookingHistoryTab({ unit, onDeleteBooking, onViewDetails }) {
                         className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">{t('history.delete')}</span>
+                        <span>{t('history.delete')}</span>
                       </button>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile cards */}
-      <div className="md:hidden space-y-3">
-        {sortedBookings.map((booking) => {
-          const isCurrent = booking.id === unit.currentBookingId;
-          const hasInsurance = Number(booking.insurance) > 0;
-          return (
-            <div
-              key={booking.id}
-              className={`rounded-xl border p-4 space-y-3 ${
-                isCurrent
-                  ? 'bg-indigo-500/5 border-indigo-500/30'
-                  : 'bg-slate-800/40 border-slate-700/40'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-slate-200">{booking.tenantName}</p>
-                  <p className="text-xs text-slate-500 font-mono" dir="ltr">{booking.phone}</p>
-                </div>
-                <SourceTag source={booking.source} isArabic={isArabic} />
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-                <div>
-                  <p className="text-slate-600">{t('history.checkIn')}</p>
-                  <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkIn, isArabic)}</p>
-                </div>
-                <div>
-                  <p className="text-slate-600">{t('history.checkOut')}</p>
-                  <p className="text-slate-300 font-medium">{formatBookingDate(booking.checkOut, isArabic)}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-emerald-400 font-bold text-sm">SAR {booking.amount.toLocaleString()}</span>
-                  {hasInsurance && (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                      <Shield className="w-3 h-3" />
-                      {t('history.depositTag', { amount: Number(booking.insurance).toLocaleString() })}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onViewDetails && onViewDetails(booking, unit)}
-                    title={t('history.details')}
-                    className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>{t('history.details')}</span>
-                  </button>
-                  <button
-                    onClick={() => onDeleteBooking && onDeleteBooking(unit.id, booking.id, booking.phone)}
-                    title={t('history.delete')}
-                    className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>{t('history.delete')}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

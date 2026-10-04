@@ -22,6 +22,7 @@ import {
   RotateCcw,
   ImagePlus,
   Camera,
+  Search,
 } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage, sendGenericTemplate } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
@@ -1381,6 +1382,7 @@ export function WebhookInspector() {
 
   const [chats, setChats] = useState({});
   const [activePhone, setActivePhone] = useState(null);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -2158,6 +2160,17 @@ export function WebhookInspector() {
     }))
     .sort((a, b) => parseInt(b.latestMessageTime) - parseInt(a.latestMessageTime));
 
+  const filteredChatList = useMemo(() => {
+    const q = contactSearchQuery.toLowerCase().trim();
+    if (!q) return chatList;
+    return chatList.filter((chat) => {
+      const nameMatch = (chat.contactName || '').toLowerCase().includes(q);
+      const waProfileMatch = (chat.waProfileName || '').toLowerCase().includes(q);
+      const phoneMatch = (chat.phone || '').includes(q);
+      return nameMatch || waProfileMatch || phoneMatch;
+    });
+  }, [chatList, contactSearchQuery]);
+
   return (
     <div className="w-full h-[calc(100vh-80px)] max-h-[calc(100vh-80px)] overflow-hidden flex flex-col space-y-2.5 sm:space-y-3 animate-fade-in max-w-6xl mx-auto min-h-0">
       {/* Chat Interface Container */}
@@ -2170,7 +2183,9 @@ export function WebhookInspector() {
           <div className="p-3.5 sm:p-4 border-b border-slate-700/50 bg-[#202c33] flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-white">{t('webhook.chats')}</h2>
-              <span className="text-xs text-slate-400 font-mono">({chatList.length})</span>
+              <span className="text-xs text-slate-400 font-mono">
+                ({filteredChatList.length}{contactSearchQuery.trim() ? ` / ${chatList.length}` : ''})
+              </span>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -2198,6 +2213,30 @@ export function WebhookInspector() {
             </div>
           </div>
 
+          {/* Search Contacts Bar */}
+          <div className="p-2 sm:p-2.5 border-b border-slate-700/50 bg-[#111b21] flex-shrink-0">
+            <div className="flex items-center gap-2 bg-[#202c33] border border-slate-700/70 rounded-xl px-3 py-1.5 text-xs text-white focus-within:border-emerald-500 transition-colors">
+              <Search className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder={t('webhook.searchContacts')}
+                value={contactSearchQuery}
+                onChange={(e) => setContactSearchQuery(e.target.value)}
+                className="bg-transparent outline-none text-xs text-slate-200 placeholder-slate-500 w-full"
+              />
+              {contactSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setContactSearchQuery('')}
+                  className="p-0.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                  title={t('common.cancel')}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="flex-1 overflow-y-auto min-h-0" onScroll={handleChatListScroll}>
             {chatList.length === 0 ? (
               <div className="p-6 text-center text-slate-500 text-sm">
@@ -2205,9 +2244,22 @@ export function WebhookInspector() {
                 <br />
                 <span className="text-xs opacity-70 mt-2 block">{t('webhook.waitingHint')}</span>
               </div>
+            ) : filteredChatList.length === 0 ? (
+              <div className="p-6 text-center text-slate-500 text-sm flex flex-col items-center">
+                <Search className="w-6 h-6 mb-2 text-slate-600 opacity-60" />
+                <p className="font-semibold text-slate-300">{t('webhook.noMatchingContacts')}</p>
+                <p className="text-xs text-slate-500 mt-1 truncate max-w-[200px] font-mono">"{contactSearchQuery}"</p>
+                <button
+                  type="button"
+                  onClick={() => setContactSearchQuery('')}
+                  className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 underline font-medium cursor-pointer"
+                >
+                  {t('webhook.clearSearch')}
+                </button>
+              </div>
             ) : (
               <div className="divide-y divide-slate-800/60">
-                {chatList.map((chat) => (
+                {filteredChatList.map((chat) => (
                   <button
                     key={chat.phone}
                     onClick={() => handleOpenChat(chat.phone)}
