@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   MessageSquare,
   Check,
+  CheckCheck,
   Send,
   Loader2,
   User,
@@ -1302,6 +1303,55 @@ function formatTimestamp(ts) {
   const date = new Date(num > 1e11 ? num : num * 1000);
   if (isNaN(date.getTime())) return '';
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Returns a 'YYYY-MM-DD' string in local time for grouping messages by day
+function getMessageDateKey(ts) {
+  if (!ts) return null;
+  const num = typeof ts === 'number' ? ts : parseInt(ts, 10);
+  if (isNaN(num) || num <= 0) return null;
+  const date = new Date(num > 1e11 ? num : num * 1000);
+  if (isNaN(date.getTime())) return null;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Returns a human-readable label for a date key ('YYYY-MM-DD')
+function getDateLabel(dateKey, todayLabel, yesterdayLabel) {
+  if (!dateKey) return '';
+  const now = new Date();
+  const todayKey = (() => {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })();
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(now.getDate() - 1);
+  const yesterdayKey = (() => {
+    const y = yesterdayDate.getFullYear();
+    const m = String(yesterdayDate.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterdayDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })();
+  if (dateKey === todayKey) return todayLabel;
+  if (dateKey === yesterdayKey) return yesterdayLabel;
+  // Format as DD/MM/YYYY
+  const [y, mo, da] = dateKey.split('-');
+  return `${da}/${mo}/${y}`;
+}
+
+// WhatsApp-style date pill divider
+function DateDivider({ label }) {
+  return (
+    <div className="flex items-center justify-center my-3 select-none">
+      <span className="px-3 py-0.5 rounded-full text-[11px] font-medium bg-[#182229] text-slate-400 border border-white/5 shadow-sm tracking-wide">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 // ── MessageBubble with WhatsApp-style alignment ──────────────────────────────
@@ -2652,13 +2702,32 @@ export function WebhookInspector() {
                   {activeMessages.length === 0 && (
                     <div className="text-center text-slate-600 text-sm py-8">{t('webhook.noMessages')}</div>
                   )}
-                  {activeMessages.map((event) => (
-                    <MessageBubble
-                      key={event.id}
-                      event={event}
-                      onDelete={() => handleDeleteMessage(activePhone, event.id)}
-                    />
-                  ))}
+                  {(() => {
+                    const todayLabel = t('webhook.today');
+                    const yesterdayLabel = t('webhook.yesterday');
+                    let lastDateKey = null;
+                    return activeMessages.flatMap((event) => {
+                      const dateKey = getMessageDateKey(event.timestamp);
+                      const items = [];
+                      if (dateKey && dateKey !== lastDateKey) {
+                        lastDateKey = dateKey;
+                        items.push(
+                          <DateDivider
+                            key={`divider-${dateKey}`}
+                            label={getDateLabel(dateKey, todayLabel, yesterdayLabel)}
+                          />
+                        );
+                      }
+                      items.push(
+                        <MessageBubble
+                          key={event.id}
+                          event={event}
+                          onDelete={() => handleDeleteMessage(activePhone, event.id)}
+                        />
+                      );
+                      return items;
+                    });
+                  })()}
                   <div ref={messagesEndRef} />
                 </div>
               </div>
