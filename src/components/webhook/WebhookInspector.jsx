@@ -305,6 +305,8 @@ function transformFirestoreMessage(doc, phone) {
     msgObj.video = { id: data.mediaId, caption: data.caption || data.text, mime_type: data.mimeType, link: mediaUrl, url: mediaUrl };
   } else if (data.mediaType === 'document') {
     msgObj.document = { id: data.mediaId, filename: data.filename || data.caption || data.text, mime_type: data.mimeType, link: mediaUrl, url: mediaUrl };
+  } else if (data.mediaType === 'sticker') {
+    msgObj.sticker = { id: data.mediaId, mime_type: data.mimeType || 'image/webp', link: mediaUrl, url: mediaUrl };
   } else {
     msgObj.text = { body: data.text || '' };
   }
@@ -1380,10 +1382,12 @@ function MessageBubble({ event, onDelete }) {
         )}
 
         <div className={`max-w-[75%] flex flex-col ${isOutgoing ? 'items-end' : 'items-start'}`}>
-          <div className={`relative px-3.5 py-2 rounded-2xl shadow-sm text-sm ${
-            isOutgoing
-              ? 'bg-[#005c4b] text-slate-100 rounded-br-sm'
-              : 'bg-[#202c33] text-slate-100 rounded-bl-sm border border-white/5'
+          <div className={`relative text-sm ${
+            msgType === 'sticker'
+              ? 'bg-transparent p-0 shadow-none border-none'
+              : isOutgoing
+                ? 'px-3.5 py-2 rounded-2xl shadow-sm bg-[#005c4b] text-slate-100 rounded-br-sm'
+                : 'px-3.5 py-2 rounded-2xl shadow-sm bg-[#202c33] text-slate-100 rounded-bl-sm border border-white/5'
           }`}>
             {isOutgoing && (
               <span className="flex items-center gap-1 text-[10px] text-emerald-300/80 font-medium mb-1" dir="ltr">
@@ -1482,14 +1486,20 @@ function MessageBubble({ event, onDelete }) {
               </div>
             )}
 
-            {/* Media: Sticker */}
+            {/* Media: Sticker — rendered without a bubble background, like real WhatsApp */}
             {msgType === 'sticker' && (
               <div className="my-1">
                 {mediaUrl ? (
-                  <img src={mediaUrl} alt="Sticker" className="w-28 h-28 object-contain" />
+                  <img
+                    src={mediaUrl}
+                    alt="Sticker"
+                    className="w-32 h-32 object-contain drop-shadow-lg"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
+                  />
                 ) : (
-                  <span className="text-xl">👾</span>
+                  <span className="text-4xl">👾</span>
                 )}
+                <span className="text-3xl hidden">👾</span>
               </div>
             )}
 
