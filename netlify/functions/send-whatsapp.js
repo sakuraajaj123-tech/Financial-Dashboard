@@ -18,7 +18,7 @@ function getDb() {
   return getAdminFirestore();
 }
 
-async function saveMessage(phone, { sender, text, messageId, mediaId, mediaType, mimeType, caption, mediaUrl }) {
+async function saveMessage(phone, { sender, text, messageId, mediaId, mediaType, mimeType, caption, mediaUrl, filename }) {
   try {
     const db = getDb();
     if (!db) return;
@@ -51,6 +51,7 @@ async function saveMessage(phone, { sender, text, messageId, mediaId, mediaType,
     if (mediaUrl) msgData.mediaUrl = mediaUrl;
     if (mimeType) msgData.mimeType = mimeType;
     if (caption) msgData.caption = caption;
+    if (filename) msgData.filename = filename;
 
     await chatRef.collection('messages').add(msgData);
     console.log(`[Firestore] ✅ Saved outgoing ${sender} ${mediaType || 'text'} message for ${cleanPhone}`);
@@ -423,9 +424,9 @@ export async function handler(event, context) {
         },
       };
     }
-    // ── Mode 8: Send media (image / audio) ────────────────────────────────────
+    // ── Mode 8: Send media (image / audio / video / document) ─────────────────
     else if (body.mode === 'media') {
-      const { to, base64Media, mimeType, mediaType, caption } = body;
+      const { to, base64Media, mimeType, mediaType, caption, filename: customFilename } = body;
 
       if (!to || !base64Media || !mimeType || !mediaType) {
         return {
@@ -462,20 +463,42 @@ export async function handler(event, context) {
         if (mimeType.includes('png')) {
           effectiveMime = 'image/png';
           ext = 'png';
+        } else if (mimeType.includes('webp')) {
+          effectiveMime = 'image/webp';
+          ext = 'webp';
         } else {
           effectiveMime = 'image/jpeg';
           ext = 'jpg';
         }
+      } else if (mediaType === 'video') {
+        if (mimeType.includes('3gp')) {
+          effectiveMime = 'video/3gpp';
+          ext = '3gp';
+        } else {
+          effectiveMime = 'video/mp4';
+          ext = 'mp4';
+        }
+      } else if (mediaType === 'document') {
+        if (mimeType.includes('pdf')) {
+          effectiveMime = 'application/pdf';
+          ext = 'pdf';
+        } else if (mimeType.includes('word') || mimeType.includes('doc')) {
+          effectiveMime = mimeType;
+          ext = 'docx';
+        } else {
+          effectiveMime = mimeType || 'application/pdf';
+          ext = 'pdf';
+        }
       }
 
-      const filename = `${mediaType}_${Date.now()}.${ext}`;
+      const finalFilename = customFilename || `${mediaType}_${Date.now()}.${ext}`;
 
       // Step 2: Use FormData for upload to Meta Media API
       const formData = new FormData();
       formData.append('messaging_product', 'whatsapp');
       formData.append('type', effectiveMime);
       const fileBlob = new Blob([binaryData], { type: effectiveMime });
-      formData.append('file', fileBlob, filename);
+      formData.append('file', fileBlob, finalFilename);
 
       const uploadUrl = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/media`;
       const uploadRes = await fetch(uploadUrl, {
@@ -515,8 +538,8 @@ export async function handler(event, context) {
         mediaPayload.video = { id: uploadedMediaId };
         if (caption) mediaPayload.video.caption = caption;
       } else if (mediaType === 'document') {
-        mediaPayload.document = { id: uploadedMediaId };
-        if (caption) mediaPayload.document.filename = caption;
+        mediaPayload.document = { id: uploadedMediaId, filename: finalFilename };
+        if (caption) mediaPayload.document.caption = caption;
       }
 
       // Step 4: Send the message via Meta Cloud API
@@ -547,7 +570,11 @@ export async function handler(event, context) {
         ? (caption || '📸 صورة')
         : mediaType === 'audio'
           ? '🎵 رسالة صوتية'
-          : `📎 ${mediaType}`;
+          : mediaType === 'video'
+            ? (caption || '🎥 فيديو')
+            : mediaType === 'document'
+              ? (caption ? `📄 ${caption}` : `📄 ${finalFilename}`)
+              : `📎 ${mediaType}`;
 
       await saveMessage(to, {
         sender: 'admin',
@@ -556,6 +583,7 @@ export async function handler(event, context) {
         mediaId: uploadedMediaId,
         mediaType,
         mimeType: effectiveMime,
+        filename: finalFilename,
         caption: caption || null,
         mediaUrl: `/api/media?id=${uploadedMediaId}`,
       });

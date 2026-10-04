@@ -114,13 +114,14 @@ export async function sendTermsTemplate(to, variableValue) {
  * @param {string} base64Media - Base64-encoded media content (no data: prefix)
  * @param {string} mimeType - MIME type (e.g. 'image/jpeg', 'audio/mp3', 'audio/ogg; codecs=opus')
  * @param {'image'|'audio'|'video'|'document'} mediaType - WhatsApp media type
- * @param {string} [caption] - Optional caption (images only)
+ * @param {string} [caption] - Optional caption
+ * @param {string} [filename] - Optional filename (for documents / files)
  */
-export async function sendMediaMessage(to, base64Media, mimeType, mediaType, caption) {
+export async function sendMediaMessage(to, base64Media, mimeType, mediaType, caption, filename) {
   const response = await fetch('/api/whatsapp/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'media', to, base64Media, mimeType, mediaType, caption }),
+    body: JSON.stringify({ mode: 'media', to, base64Media, mimeType, mediaType, caption, filename }),
   });
 
   if (!response.ok) {

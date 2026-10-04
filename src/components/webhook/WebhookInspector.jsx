@@ -303,7 +303,7 @@ function transformFirestoreMessage(doc, phone) {
   } else if (data.mediaType === 'video') {
     msgObj.video = { id: data.mediaId, caption: data.caption || data.text, mime_type: data.mimeType, link: mediaUrl, url: mediaUrl };
   } else if (data.mediaType === 'document') {
-    msgObj.document = { id: data.mediaId, filename: data.caption || data.text, mime_type: data.mimeType, link: mediaUrl, url: mediaUrl };
+    msgObj.document = { id: data.mediaId, filename: data.filename || data.caption || data.text, mime_type: data.mimeType, link: mediaUrl, url: mediaUrl };
   } else {
     msgObj.text = { body: data.text || '' };
   }
@@ -374,36 +374,81 @@ function ReplyBox({
   const recordingTimerRef = useRef(null);
   const streamRef = useRef(null);
 
-  // ── Image upload state ───────────────────────────────────
-  // Each item: { id: string, file: File, objectUrl: string, status: 'pending'|'sending'|'sent'|'error' }
-  const [imageQueue, setImageQueue] = useState([]);
-  const [imageCaption, setImageCaption] = useState('');
-  const [isSendingImages, setIsSendingImages] = useState(false);
+  // ── Media upload state (Photos, Videos, PDFs) ───────────
+  // Each item: { id: string, file: File, fileName: string, fileSize: number, mediaType: 'image'|'video'|'document', mimeType: string, objectUrl: string, status: 'pending'|'sending'|'sent'|'error' }
+  const [mediaQueue, setMediaQueue] = useState([]);
+  const [mediaCaption, setMediaCaption] = useState('');
+  const [isSendingMedia, setIsSendingMedia] = useState(false);
   const galleryInputRef = useRef(null);
+  const docInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  // ── Image queue helpers ──────────────────────────────────
-  /** Add File objects to the queue (dedup by name+size) */
+  // ── Media queue helpers ──────────────────────────────────
+  const getMediaType = (file) => {
+    if (file.type?.startsWith('video/')) return 'video';
+    if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) return 'document';
+    if (file.type?.startsWith('image/')) return 'image';
+    return 'document';
+  };
+
+  const getMimeType = (file, mediaType) => {
+    if (file.type) return file.type;
+    if (mediaType === 'document') return 'application/pdf';
+    if (mediaType === 'video') return 'video/mp4';
+    if (mediaType === 'image') return 'image/jpeg';
+    return 'application/octet-stream';
+  };
+
+  /** Add File objects (images, videos, PDFs) to the queue (dedup by name+size) */
   const addFilesToQueue = (files) => {
-    const incoming = Array.from(files).filter(f => f.type.startsWith('image/'));
+    setErrorMsg('');
+    const incoming = Array.from(files).filter(f => {
+      return (
+        f.type?.startsWith('image/') ||
+        f.type?.startsWith('video/') ||
+        f.type === 'application/pdf' ||
+        f.name?.toLowerCase().endsWith('.pdf')
+      );
+    });
+
     if (!incoming.length) return;
-    setImageQueue(prev => {
+
+    // Check size limit: max 6 MB per file (Netlify function base64 body limit)
+    const MAX_SIZE = 6 * 1024 * 1024;
+    const oversized = incoming.filter(f => f.size > MAX_SIZE);
+    if (oversized.length > 0) {
+      setErrorMsg(
+        t('webhook.fileTooLarge', `"${oversized[0].name}" is too large. Maximum file size is 6 MB.`)
+      );
+    }
+
+    const validFiles = incoming.filter(f => f.size <= MAX_SIZE);
+    if (!validFiles.length) return;
+
+    setMediaQueue(prev => {
       const existingKeys = new Set(prev.map(q => `${q.file.name}-${q.file.size}`));
-      const newItems = incoming
+      const newItems = validFiles
         .filter(f => !existingKeys.has(`${f.name}-${f.size}`))
-        .map(f => ({
-          id: `img_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-          file: f,
-          objectUrl: URL.createObjectURL(f),
-          status: 'pending',
-        }));
+        .map(f => {
+          const mediaType = getMediaType(f);
+          return {
+            id: `media_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            file: f,
+            fileName: f.name,
+            fileSize: f.size,
+            mediaType,
+            mimeType: getMimeType(f, mediaType),
+            objectUrl: URL.createObjectURL(f),
+            status: 'pending',
+          };
+        });
       return [...prev, ...newItems];
     });
   };
 
-  /** Remove one image from the queue and revoke its object URL */
-  const removeImageFromQueue = (id) => {
-    setImageQueue(prev => {
+  /** Remove one media item from the queue and revoke its object URL */
+  const removeMediaFromQueue = (id) => {
+    setMediaQueue(prev => {
       const item = prev.find(q => q.id === id);
       if (item) URL.revokeObjectURL(item.objectUrl);
       return prev.filter(q => q.id !== id);
@@ -411,14 +456,15 @@ function ReplyBox({
   };
 
   /** Revoke all object URLs and clear the queue */
-  const clearImageQueue = () => {
-    setImageQueue(prev => {
+  const clearMediaQueue = () => {
+    setMediaQueue(prev => {
       prev.forEach(q => URL.revokeObjectURL(q.objectUrl));
       return [];
     });
-    setImageCaption('');
+    setMediaCaption('');
     // Reset file inputs so the same files can be re-selected
     if (galleryInputRef.current) galleryInputRef.current.value = '';
+    if (docInputRef.current) docInputRef.current.value = '';
     if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
@@ -430,62 +476,78 @@ function ReplyBox({
     reader.readAsDataURL(file);
   });
 
-  /** Send all queued images sequentially */
-  const handleSendImages = async () => {
-    if (!imageQueue.length || isSendingImages) return;
-    setIsSendingImages(true);
+  /** Send all queued media items sequentially */
+  const handleSendMedia = async () => {
+    if (!mediaQueue.length || isSendingMedia) return;
+    setIsSendingMedia(true);
     setErrorMsg('');
 
-    const caption = imageCaption.trim();
-    const queueSnapshot = [...imageQueue];
+    const caption = mediaCaption.trim();
+    const queueSnapshot = [...mediaQueue];
 
     for (let i = 0; i < queueSnapshot.length; i++) {
       const item = queueSnapshot[i];
       const isFirst = i === 0;
-      const itemCaption = isFirst ? caption : undefined; // caption only on first image
+      const itemCaption = isFirst ? caption : undefined; // caption only on first item
 
       // Mark item as sending
-      setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
+      setMediaQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
+
+      const fallbackText =
+        item.mediaType === 'video'
+          ? (itemCaption || t('webhook.captionVideo', '🎥 Video'))
+          : item.mediaType === 'document'
+            ? (itemCaption ? `📄 ${itemCaption}` : `📄 ${item.fileName}`)
+            : (itemCaption || t('webhook.captionImage', '📸 Photo'));
 
       // Optimistic message bubble
       const tempId = onSendSuccess
-        ? onSendSuccess(to, itemCaption || t('webhook.captionImage'), null, {
-            mediaType: 'image',
-            mimeType: item.file.type || 'image/jpeg',
+        ? onSendSuccess(to, fallbackText, null, {
+            mediaType: item.mediaType,
+            mimeType: item.mimeType,
             localObjectUrl: item.objectUrl,
             caption: itemCaption || undefined,
+            filename: item.fileName,
           }, 'optimistic')
         : null;
 
       try {
         const base64 = await fileToBase64(item.file);
-        const res = await sendMediaMessage(to, base64, item.file.type || 'image/jpeg', 'image', itemCaption || undefined);
+        const res = await sendMediaMessage(
+          to,
+          base64,
+          item.mimeType,
+          item.mediaType,
+          itemCaption || undefined,
+          item.fileName
+        );
 
         const uploadedId = res?.mediaId;
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, itemCaption || t('webhook.captionImage'), res?.messages?.[0]?.id, {
-            mediaType: 'image',
+          onSendSuccess(to, fallbackText, res?.messages?.[0]?.id, {
+            mediaType: item.mediaType,
             mediaId: uploadedId,
             mediaUrl: res?.mediaUrl || (uploadedId ? `/api/media?id=${uploadedId}` : null),
-            mimeType: item.file.type || 'image/jpeg',
+            mimeType: item.mimeType,
             caption: itemCaption || undefined,
+            filename: item.fileName,
           }, 'confirm', tempId);
         }
-        setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sent' } : q));
+        setMediaQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sent' } : q));
       } catch (err) {
-        console.error('[ImageUpload] Error sending image:', err);
+        console.error('[MediaUpload] Error sending media:', err);
         if (onSendSuccess && tempId) {
-          onSendSuccess(to, itemCaption || t('webhook.captionImage'), null, null, 'fail', tempId);
+          onSendSuccess(to, fallbackText, null, null, 'fail', tempId);
         }
-        setImageQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error' } : q));
-        setErrorMsg(err.message || t('webhook.imageSendFailed', 'Failed to send image'));
+        setMediaQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error' } : q));
+        setErrorMsg(err.message || t('webhook.mediaSendFailed', 'Failed to send file'));
       }
     }
 
-    setIsSendingImages(false);
+    setIsSendingMedia(false);
     setStatus('sent');
     setTimeout(() => setStatus('idle'), 3000);
-    clearImageQueue();
+    clearMediaQueue();
   };
 
   // ── Direct Send for Quick Static Template ───────────────
@@ -697,7 +759,7 @@ function ReplyBox({
         streamRef.current.getTracks().forEach(t => t.stop());
       }
       // Revoke any lingering object URLs
-      imageQueue.forEach(q => URL.revokeObjectURL(q.objectUrl));
+      mediaQueue.forEach(q => URL.revokeObjectURL(q.objectUrl));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -705,12 +767,12 @@ function ReplyBox({
   // Hidden file inputs (rendered outside the visual flow)
   const hiddenFileInputs = (
     <>
-      {/* Gallery picker — multiple images */}
+      {/* Gallery picker — multiple photos & videos */}
       <input
         ref={galleryInputRef}
-        id="img-gallery-input"
+        id="media-gallery-input"
         type="file"
-        accept="image/*"
+        accept="image/*,video/mp4,video/3gpp,video/quicktime,video/*"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -718,10 +780,23 @@ function ReplyBox({
           e.target.value = '';
         }}
       />
-      {/* Camera capture — single shot */}
+      {/* PDF / Document picker */}
+      <input
+        ref={docInputRef}
+        id="media-document-input"
+        type="file"
+        accept=".pdf,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          addFilesToQueue(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      {/* Camera capture — single shot photo */}
       <input
         ref={cameraInputRef}
-        id="img-camera-input"
+        id="media-camera-input"
         type="file"
         accept="image/*"
         capture="environment"
@@ -810,52 +885,96 @@ function ReplyBox({
         }}
       />
 
-      {/* ── Image Preview Strip ──────────────────────────────── */}
-      {imageQueue.length > 0 && (
-        <div className="mb-2.5 animate-fade-in">
+      {/* ── Media Preview Strip (Images, Videos, PDFs) ─────── */}
+      {mediaQueue.length > 0 && (
+        <div className="mb-2.5 animate-fade-in bg-slate-900/60 p-2.5 rounded-2xl border border-slate-700/60 backdrop-blur-sm">
           {/* Thumbnail row */}
-          <div className="flex items-start gap-2 overflow-x-auto pb-1 scrollbar-none flex-wrap">
-            {imageQueue.map((item) => (
+          <div className="flex items-start gap-2.5 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
+            {mediaQueue.map((item) => (
               <div
                 key={item.id}
-                className="relative flex-shrink-0 w-[72px] h-[72px] rounded-xl overflow-hidden border-2 group/thumb transition-all"
+                className="relative flex-shrink-0 rounded-xl overflow-hidden border-2 group/thumb transition-all shadow-md bg-slate-950/40"
                 style={{
+                  width: item.mediaType === 'document' ? '140px' : '76px',
+                  height: '76px',
                   borderColor:
                     item.status === 'sent' ? 'rgb(52,211,153)'
                     : item.status === 'error' ? 'rgb(248,113,113)'
                     : item.status === 'sending' ? 'rgb(99,102,241)'
-                    : 'rgba(255,255,255,0.12)',
+                    : 'rgba(255,255,255,0.15)',
                 }}
               >
-                <img
-                  src={item.objectUrl}
-                  alt="preview"
-                  className="w-full h-full object-cover"
-                />
-                {/* Status overlay */}
+                {/* Image item */}
+                {item.mediaType === 'image' && (
+                  <img
+                    src={item.objectUrl}
+                    alt={item.fileName}
+                    className="w-full h-full object-cover"
+                  />
+                )}
+
+                {/* Video item */}
+                {item.mediaType === 'video' && (
+                  <div className="relative w-full h-full bg-slate-950 flex items-center justify-center">
+                    <video
+                      src={item.objectUrl}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                    />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center pointer-events-none">
+                      <Play className="w-5 h-5 text-white/90 fill-white" />
+                    </div>
+                    <span className="absolute bottom-1 left-1 text-[8px] font-bold bg-black/70 text-slate-200 px-1 rounded uppercase tracking-wider">
+                      VIDEO
+                    </span>
+                  </div>
+                )}
+
+                {/* Document / PDF item */}
+                {item.mediaType === 'document' && (
+                  <div className="w-full h-full p-2 flex flex-col justify-between bg-slate-800/80">
+                    <div className="flex items-start gap-1.5 min-w-0">
+                      <FileText className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-medium text-slate-200 truncate leading-tight" title={item.fileName}>
+                          {item.fileName}
+                        </p>
+                        <span className="text-[9px] text-rose-400/90 font-semibold uppercase">PDF</span>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-400 font-mono">
+                      {(item.fileSize / (1024 * 1024)).toFixed(1)} MB
+                    </p>
+                  </div>
+                )}
+
+                {/* Status overlays */}
                 {item.status === 'sending' && (
-                  <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center">
-                    <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center backdrop-blur-xs">
+                    <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
                   </div>
                 )}
                 {item.status === 'sent' && (
-                  <div className="absolute inset-0 bg-emerald-950/50 flex items-center justify-center">
-                    <Check className="w-4 h-4 text-emerald-400" />
+                  <div className="absolute inset-0 bg-emerald-950/60 flex items-center justify-center backdrop-blur-xs">
+                    <Check className="w-5 h-5 text-emerald-400" />
                   </div>
                 )}
                 {item.status === 'error' && (
-                  <div className="absolute inset-0 bg-rose-950/60 flex items-center justify-center">
-                    <X className="w-4 h-4 text-rose-400" />
+                  <div className="absolute inset-0 bg-rose-950/70 flex items-center justify-center backdrop-blur-xs">
+                    <X className="w-5 h-5 text-rose-400" />
                   </div>
                 )}
-                {/* Remove button (only when idle/error) */}
+
+                {/* Remove button */}
                 {item.status !== 'sending' && item.status !== 'sent' && (
                   <button
                     type="button"
-                    onClick={() => removeImageFromQueue(item.id)}
-                    disabled={isSendingImages}
-                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-950/80 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-sm disabled:opacity-0"
-                    aria-label="Remove image"
+                    onClick={() => removeMediaFromQueue(item.id)}
+                    disabled={isSendingMedia}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-950/90 hover:bg-rose-500 text-white flex items-center justify-center transition-all shadow-md group-hover/thumb:opacity-100 opacity-90"
+                    aria-label="Remove item"
+                    title="Remove"
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -863,29 +982,40 @@ function ReplyBox({
               </div>
             ))}
 
-            {/* Add more button */}
-            {!isSendingImages && (
-              <button
-                type="button"
-                onClick={() => galleryInputRef.current?.click()}
-                className="flex-shrink-0 w-[72px] h-[72px] rounded-xl border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-800/40 hover:bg-slate-700/60 text-slate-500 hover:text-emerald-400 flex flex-col items-center justify-center gap-1 transition-all text-[10px]"
-                aria-label="Add more images"
-              >
-                <ImagePlus className="w-4 h-4" />
-                <span>Add</span>
-              </button>
+            {/* Add more buttons */}
+            {!isSendingMedia && (
+              <div className="flex items-center gap-1.5 flex-shrink-0 self-stretch">
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="w-[76px] h-[76px] rounded-xl border-2 border-dashed border-slate-600 hover:border-teal-500 bg-slate-800/40 hover:bg-slate-700/60 text-slate-400 hover:text-teal-400 flex flex-col items-center justify-center gap-1 transition-all text-[10px]"
+                  title="Add more photos or videos"
+                >
+                  <ImagePlus className="w-4 h-4" />
+                  <span>+ Media</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => docInputRef.current?.click()}
+                  className="w-[76px] h-[76px] rounded-xl border-2 border-dashed border-slate-600 hover:border-rose-500 bg-slate-800/40 hover:bg-slate-700/60 text-slate-400 hover:text-rose-400 flex flex-col items-center justify-center gap-1 transition-all text-[10px]"
+                  title="Add PDF document"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>+ PDF</span>
+                </button>
+              </div>
             )}
           </div>
 
           {/* Caption + action bar */}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/40">
             <input
               type="text"
-              value={imageCaption}
-              onChange={(e) => setImageCaption(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendImages(); } }}
-              placeholder={t('webhook.imageCaptionPlaceholder', 'Add a caption…')}
-              disabled={isSendingImages}
+              value={mediaCaption}
+              onChange={(e) => setMediaCaption(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendMedia(); } }}
+              placeholder={t('webhook.mediaCaptionPlaceholder', 'Add a caption…')}
+              disabled={isSendingMedia}
               className="flex-1 bg-[#2a3942] border border-slate-700/60 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-50 transition-all"
               dir="auto"
               maxLength={1024}
@@ -893,24 +1023,24 @@ function ReplyBox({
             {/* Discard all */}
             <button
               type="button"
-              onClick={clearImageQueue}
-              disabled={isSendingImages}
+              onClick={clearMediaQueue}
+              disabled={isSendingMedia}
               className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-700 hover:bg-rose-500/30 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-all disabled:opacity-40"
-              title="Discard all images"
+              title="Discard all"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-            {/* Send images */}
+            {/* Send media */}
             <button
               type="button"
-              onClick={handleSendImages}
-              disabled={isSendingImages || imageQueue.every(q => q.status === 'sent')}
+              onClick={handleSendMedia}
+              disabled={isSendingMedia || mediaQueue.every(q => q.status === 'sent')}
               className="flex-shrink-0 h-8 px-3.5 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center gap-1.5 text-xs font-semibold transition-all shadow-md"
             >
-              {isSendingImages ? (
+              {isSendingMedia ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Sending…</span></>
               ) : (
-                <><Send className="w-3 h-3 rtl:-scale-x-100" /><span>Send {imageQueue.filter(q => q.status === 'pending').length > 1 ? `${imageQueue.filter(q => q.status === 'pending').length} photos` : 'photo'}</span></>
+                <><Send className="w-3 h-3 rtl:-scale-x-100" /><span>Send ({mediaQueue.filter(q => q.status === 'pending').length})</span></>
               )}
             </button>
           </div>
@@ -1071,18 +1201,34 @@ function ReplyBox({
           )}
         </button>
 
-        {/* Gallery image picker button */}
+        {/* Gallery image & video picker button */}
         <button
           type="button"
           onClick={() => galleryInputRef.current?.click()}
-          disabled={status === 'sending' || isSendingImages}
+          disabled={status === 'sending' || isSendingMedia}
           className="relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-teal-400"
-          title="Attach images"
+          title={t('webhook.attachPhotosVideos', 'Photos & Videos from Gallery')}
         >
           <ImagePlus className="w-5 h-5" />
-          {imageQueue.length > 0 && (
+          {mediaQueue.filter(q => q.mediaType === 'image' || q.mediaType === 'video').length > 0 && (
             <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-teal-500 text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#1f2c34]">
-              {imageQueue.length}
+              {mediaQueue.filter(q => q.mediaType === 'image' || q.mediaType === 'video').length}
+            </span>
+          )}
+        </button>
+
+        {/* PDF / Document picker button */}
+        <button
+          type="button"
+          onClick={() => docInputRef.current?.click()}
+          disabled={status === 'sending' || isSendingMedia}
+          className="relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-rose-400"
+          title={t('webhook.attachDocument', 'Send PDF or Document')}
+        >
+          <FileText className="w-5 h-5" />
+          {mediaQueue.filter(q => q.mediaType === 'document').length > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#1f2c34]">
+              {mediaQueue.filter(q => q.mediaType === 'document').length}
             </span>
           )}
         </button>
@@ -1091,9 +1237,9 @@ function ReplyBox({
         <button
           type="button"
           onClick={() => cameraInputRef.current?.click()}
-          disabled={status === 'sending' || isSendingImages}
+          disabled={status === 'sending' || isSendingMedia}
           className="relative flex-shrink-0 w-10 h-10 rounded-full transition-all flex items-center justify-center bg-[#2a3942] hover:bg-[#35464f] disabled:opacity-40 text-slate-400 hover:text-violet-400"
-          title="Take a photo"
+          title={t('webhook.takePhoto', 'Take a photo')}
         >
           <Camera className="w-5 h-5" />
         </button>
@@ -1173,7 +1319,7 @@ function MessageBubble({ event, onDelete }) {
     const isOutgoing = direction === 'outgoing' || msg.from === 'bot' || msg.from === 'admin';
 
     const mediaId = msg.mediaId || msg.image?.id || msg.audio?.id || msg.video?.id || msg.document?.id || msg.sticker?.id;
-    const mediaUrl = msg.mediaUrl || (mediaId ? `/api/media?id=${mediaId}` : (msg.image?.link || msg.image?.url || msg.audio?.link || msg.audio?.url || msg.video?.link || msg.video?.url || null));
+    const mediaUrl = msg.mediaUrl || (mediaId ? `/api/media?id=${mediaId}` : (msg.image?.link || msg.image?.url || msg.audio?.link || msg.audio?.url || msg.video?.link || msg.video?.url || msg.document?.link || msg.document?.url || null));
 
     return (
       <div className={`flex mb-2 group/msg relative w-full ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
@@ -1658,6 +1804,8 @@ export function WebhookInspector() {
       msgObj.audio = { id: media.mediaId, mime_type: media.mimeType, link: mediaUrl, url: mediaUrl };
     } else if (media?.mediaType === 'video') {
       msgObj.video = { id: media.mediaId, caption: media.caption, mime_type: media.mimeType, link: mediaUrl, url: mediaUrl };
+    } else if (media?.mediaType === 'document') {
+      msgObj.document = { id: media.mediaId, filename: media.filename || media.caption || text, mime_type: media.mimeType, link: mediaUrl, url: mediaUrl };
     } else {
       msgObj.text = { body: text };
     }
@@ -1703,6 +1851,8 @@ export function WebhookInspector() {
         realMsg.mediaUrl = realMediaUrl || realMsg.mediaUrl;
         if (realMsg.image) { realMsg.image.id = media?.mediaId; realMsg.image.link = realMediaUrl; realMsg.image.url = realMediaUrl; }
         if (realMsg.audio) { realMsg.audio.id = media?.mediaId; realMsg.audio.link = realMediaUrl; realMsg.audio.url = realMediaUrl; }
+        if (realMsg.video) { realMsg.video.id = media?.mediaId; realMsg.video.link = realMediaUrl; realMsg.video.url = realMediaUrl; }
+        if (realMsg.document) { realMsg.document.id = media?.mediaId; realMsg.document.link = realMediaUrl; realMsg.document.url = realMediaUrl; }
         return { ...m, id: realMessageId || tempId, _optimistic: undefined };
       });
       return { ...prev, [cleanPhone]: { ...existing, messages } };
