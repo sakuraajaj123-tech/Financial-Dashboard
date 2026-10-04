@@ -441,7 +441,6 @@ export function AddBookingModal({
                   value={form.checkIn}
                   onChange={(val) => handleChange('checkIn', val)}
                   bookings={unitBookings.filter((b) => b.id !== initialBooking?.id)}
-                  minDate={isEdit ? undefined : new Date()}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
                 {errors.checkIn && <p className="text-xs text-rose-400 font-medium">{errors.checkIn}</p>}
@@ -466,7 +465,7 @@ export function AddBookingModal({
                   value={form.checkOut}
                   onChange={(val) => handleChange('checkOut', val)}
                   bookings={unitBookings.filter((b) => b.id !== initialBooking?.id)}
-                  minDate={form.checkIn ? addDays(parseISO(form.checkIn), 1) : (isEdit ? undefined : new Date())}
+                  minDate={form.checkIn ? addDays(parseISO(form.checkIn), 1) : undefined}
                   selectedRange={{ checkIn: form.checkIn, checkOut: form.checkOut }}
                 />
                 {errors.checkOut && <p className="text-xs text-rose-400 font-medium">{errors.checkOut}</p>}

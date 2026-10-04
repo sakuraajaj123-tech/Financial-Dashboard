@@ -109,7 +109,7 @@ export function BookingCalendarPicker({
     const middleBooking = bookedRanges.find((b) => b.checkIn < dayStr && dayStr < b.checkOut);
     const isTurnover = Boolean(checkInBooking && checkOutBooking);
 
-    // Is before minDate (past date)
+    // Check if before minDate — only enforced for checkout (must be after checkin)
     const isPast = minDate ? isBefore(startOfDay(day), startOfDay(minDate)) : false;
 
     let isBlocked = false;
