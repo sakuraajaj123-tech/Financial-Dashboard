@@ -24,6 +24,7 @@ import {
   ImagePlus,
   Camera,
   Search,
+  Power,
 } from 'lucide-react';
 import { sendFreeTextReply, sendMediaMessage, sendGenericTemplate } from '../../api/whatsapp';
 import { convertBlobToMp3 } from '../../utils/audioEncoder';
@@ -2125,6 +2126,63 @@ export function WebhookInspector() {
     }
   };
 
+  // ── Toggle Bot On/Off for a specific chat ────────────────────────────────
+  const [isTogglingBot, setIsTogglingBot] = useState(false);
+
+  const handleToggleBot = useCallback(async (phone, currentlyDisabled) => {
+    if (!phone || isTogglingBot) return;
+    const cleanPhone = phone.replace('+', '').trim();
+    const newDisabled = !currentlyDisabled;
+    setIsTogglingBot(true);
+
+    // 1. Optimistic UI update
+    setChats(prev => {
+      const existing = prev[cleanPhone];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [cleanPhone]: {
+          ...existing,
+          botManuallyDisabled: newDisabled,
+          // When re-enabling the bot, also clear the 24h pause
+          ...(newDisabled ? {} : { botPausedUntil: null }),
+        },
+      };
+    });
+
+    // 2. Direct Firestore write
+    try {
+      const chatDocRef = doc(db, 'chats', cleanPhone);
+      const updateFields = {
+        botManuallyDisabled: newDisabled,
+        updatedAt: serverTimestamp(),
+      };
+      if (!newDisabled) {
+        updateFields.botPausedUntil = null;
+      }
+      await setDoc(chatDocRef, updateFields, { merge: true });
+    } catch (fsErr) {
+      console.warn('[Firestore] Direct write error for toggle_bot:', fsErr.message);
+    }
+
+    // 3. Backend API call
+    try {
+      await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          action: 'toggle_bot',
+          botManuallyDisabled: newDisabled,
+        }),
+      });
+    } catch (apiErr) {
+      console.error('[API] Error in toggle_bot:', apiErr);
+    } finally {
+      setIsTogglingBot(false);
+    }
+  }, [isTogglingBot]);
+
   useEffect(() => {
     setIsEditingHeaderName(false);
   }, [activePhone]);
@@ -2195,6 +2253,7 @@ export function WebhookInspector() {
             isCustomName: data.isCustomName || false,
             waProfileName: data.waProfileName || null,
             botPausedUntil: data.botPausedUntil || null,
+            botManuallyDisabled: data.botManuallyDisabled || false,
           };
 
           if (change.type === 'modified') {
@@ -2205,9 +2264,11 @@ export function WebhookInspector() {
               const isCustom = data.isCustomName !== undefined ? data.isCustomName : existing.isCustomName;
               const waName = data.waProfileName || existing.waProfileName;
               const bp = data.botPausedUntil ?? existing.botPausedUntil;
+              const bmd = data.botManuallyDisabled ?? existing.botManuallyDisabled ?? false;
               if (
                 existing.contactName === cn &&
                 existing.botPausedUntil === bp &&
+                existing.botManuallyDisabled === bmd &&
                 existing.isCustomName === isCustom &&
                 existing.waProfileName === waName
               ) {
@@ -2221,6 +2282,7 @@ export function WebhookInspector() {
                   isCustomName: isCustom,
                   waProfileName: waName,
                   botPausedUntil: bp,
+                  botManuallyDisabled: bmd,
                 },
               };
             });
@@ -2275,6 +2337,7 @@ export function WebhookInspector() {
                     isCustomName: meta.isCustomName ?? existing?.isCustomName ?? false,
                     waProfileName: meta.waProfileName || existing?.waProfileName || null,
                     botPausedUntil: meta.botPausedUntil ?? existing?.botPausedUntil ?? null,
+                    botManuallyDisabled: meta.botManuallyDisabled ?? existing?.botManuallyDisabled ?? false,
                     messages: allMessages,
                     unread,
                   },
@@ -2646,7 +2709,17 @@ export function WebhookInspector() {
                           {t('webhook.customNameBadge') || 'Custom'}
                         </span>
                       )}
-                      {activeChat.botPausedUntil && activeChat.botPausedUntil > Date.now() && (
+                      {/* Bot status badges */}
+                      {activeChat.botManuallyDisabled && (
+                        <span
+                          className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-medium flex items-center gap-1"
+                          title={t('webhook.botDisabledTooltip') || 'Bot is manually turned off for this chat'}
+                        >
+                          <Power className="w-3 h-3 text-rose-400/80" />
+                          <span className="hidden sm:inline">{t('webhook.botOffBadge') || 'Bot Off'}</span>
+                        </span>
+                      )}
+                      {!activeChat.botManuallyDisabled && activeChat.botPausedUntil && activeChat.botPausedUntil > Date.now() && (
                         <span
                           className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium flex items-center gap-1"
                           title={t('webhook.botPausedTooltip')}
@@ -2660,14 +2733,49 @@ export function WebhookInspector() {
                     <p className="text-[11px] sm:text-xs text-slate-500 font-mono truncate" dir="ltr">+{activePhone}</p>
                   </div>
                 )}
-                <button
-                  onClick={() => handleClearMessages(activePhone)}
-                  disabled={isDeleting || activeMessages.length === 0}
-                  className="px-2.5 sm:px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 flex-shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">{t('webhook.clearChat')}</span>
-                </button>
+
+                {/* Bot Toggle Switch + Clear Chat */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* Bot On/Off Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleBot(activePhone, activeChat.botManuallyDisabled)}
+                    disabled={isTogglingBot}
+                    className={`group relative px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 flex-shrink-0 border ${
+                      activeChat.botManuallyDisabled
+                        ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20'
+                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                    }`}
+                    title={
+                      activeChat.botManuallyDisabled
+                        ? (t('webhook.botToggleOnTooltip') || 'Turn bot ON for this chat')
+                        : (t('webhook.botToggleOffTooltip') || 'Turn bot OFF for this chat')
+                    }
+                  >
+                    {isTogglingBot ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Bot className={`w-3.5 h-3.5 transition-transform ${activeChat.botManuallyDisabled ? 'opacity-50' : ''}`} />
+                    )}
+                    <span className="hidden sm:inline">
+                      {activeChat.botManuallyDisabled
+                        ? (t('webhook.botTurnOn') || 'Turn On')
+                        : (t('webhook.botTurnOff') || 'Turn Off')
+                      }
+                    </span>
+                    {/* Indicator dot */}
+                    <span className={`w-1.5 h-1.5 rounded-full ${activeChat.botManuallyDisabled ? 'bg-rose-400' : 'bg-emerald-400 animate-pulse'}`} />
+                  </button>
+
+                  <button
+                    onClick={() => handleClearMessages(activePhone)}
+                    disabled={isDeleting || activeMessages.length === 0}
+                    className="px-2.5 sm:px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden xs:inline">{t('webhook.clearChat')}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Message History */}

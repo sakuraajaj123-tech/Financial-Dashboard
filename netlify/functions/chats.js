@@ -146,6 +146,34 @@ export async function handler(event, context) {
         };
       }
 
+      // 3. Toggle bot on/off for this chat (manual switch)
+      if (action === 'toggle_bot') {
+        const { botManuallyDisabled } = body;
+        const updateFields = {
+          botManuallyDisabled: !!botManuallyDisabled,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        // When re-enabling the bot, also clear the 24h timer so it resumes immediately
+        if (!botManuallyDisabled) {
+          updateFields.botPausedUntil = null;
+        }
+
+        await chatRef.set(updateFields, { merge: true });
+
+        console.log(`[Firestore] 🤖 Bot ${botManuallyDisabled ? 'DISABLED' : 'ENABLED'} for chat +${cleanPhone}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            action: 'toggle_bot',
+            phone: cleanPhone,
+            botManuallyDisabled: !!botManuallyDisabled,
+          }),
+        };
+      }
+
       return {
         statusCode: 400,
         headers,
@@ -287,6 +315,7 @@ export async function handler(event, context) {
         const isCustomName = chatData.isCustomName || false;
         const waProfileName = chatData.waProfileName || null;
         const botPausedUntil = chatData.botPausedUntil || null;
+        const botManuallyDisabled = chatData.botManuallyDisabled || false;
 
         const messagesSnapshot = await chatsRef
           .doc(phone)
@@ -376,6 +405,7 @@ export async function handler(event, context) {
           isCustomName,
           waProfileName,
           botPausedUntil,
+          botManuallyDisabled,
           messages,
         };
       })

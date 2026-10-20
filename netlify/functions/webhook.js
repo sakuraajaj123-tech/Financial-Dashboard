@@ -192,7 +192,7 @@ async function sendWhatsAppMessage(phoneNumberId, accessToken, to, payload) {
   return data;
 }
 
-// ── Helper: Check if auto-replies are paused for a specific user (24h human window) ──
+// ── Helper: Check if auto-replies are paused for a specific user (24h human window OR manual switch) ──
 async function isBotPaused(phone) {
   try {
     const firestore = getFirestore();
@@ -201,6 +201,14 @@ async function isBotPaused(phone) {
     const chatDoc = await firestore.collection('chats').doc(cleanPhone).get();
     if (!chatDoc.exists) return false;
     const data = chatDoc.data();
+
+    // Check 1: Manual switch — admin explicitly disabled the bot for this chat
+    if (data?.botManuallyDisabled === true) {
+      console.log(`[Auto-Reply] ⏸️ Bot is MANUALLY disabled for +${cleanPhone}`);
+      return true;
+    }
+
+    // Check 2: 24-hour timer — auto-paused after admin sent a manual message
     if (data?.botPausedUntil) {
       const now = Date.now();
       const pausedUntil =
@@ -211,7 +219,7 @@ async function isBotPaused(phone) {
           : 0;
 
       if (now < pausedUntil) {
-        console.log(`[Auto-Reply] ⏸️ Bot is paused for +${cleanPhone} until ${new Date(pausedUntil).toISOString()}`);
+        console.log(`[Auto-Reply] ⏸️ Bot is paused for +${cleanPhone} until ${new Date(pausedUntil).toISOString()} (24h timer)`);
         return true;
       }
     }
